@@ -13,20 +13,14 @@
 package org.openhab.binding.meross.internal.api;
 
 import java.io.IOException;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Optional;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
-import org.openhab.binding.meross.internal.command.Command;
 // MQTT functionality removed (Option B) – class retained for potential future MQTT reintroduction without dependency bloat
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.google.gson.Gson;
-import com.google.gson.JsonObject;
 
 /**
  * The {@link MerossManager} class is responsible for implementing general functionalities to interact with

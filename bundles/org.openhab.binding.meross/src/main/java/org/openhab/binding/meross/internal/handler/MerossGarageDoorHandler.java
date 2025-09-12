@@ -79,8 +79,13 @@ public class MerossGarageDoorHandler extends BaseThingHandler {
                 return;
             }
             var manager = MerossManager.newMerossManager(merossHttpConnector);
-                updateStatus(ThingStatus.ONLINE.getStatusType(merossManager.onlineStatus(getThing().getLabel())));
-    } catch (IOException e) {
+            int status = manager.onlineStatus(config.doorName);
+            if (status == MerossEnum.OnlineStatus.ONLINE.value()) {
+                updateStatus(ThingStatus.ONLINE);
+            } else {
+                updateStatus(ThingStatus.OFFLINE);
+            }
+        } catch (IOException e) {
             updateStatus(ThingStatus.OFFLINE, ThingStatusDetail.COMMUNICATION_ERROR, e.getMessage());
         }
     }
@@ -119,8 +124,8 @@ public class MerossGarageDoorHandler extends BaseThingHandler {
                     default -> "";
                 };
                 if (!mode.isEmpty()) {
-                logger.debug("Garage door command '{}' accepted but no MQTT transport available (HTTP-only mode)",
-                    commandType);
+                    logger.debug("Garage door command '{}' accepted but no MQTT transport available (HTTP-only mode)",
+                            value);
                 } else {
                     logger.debug("Unsupported command {} for channel {}", command, channelId);
                 }
