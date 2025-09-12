@@ -14,16 +14,16 @@
 
   <name>openHAB Add-ons :: Bundles :: Meross Binding</name>
 
-  <properties>
-    <!-- Make errorprone annotations optional to avoid hard runtime requirement -->
-    <bnd.importpackage>com.google.errorprone.annotations;resolution:=optional,${bnd.importpackage}</bnd.importpackage>
-  </properties>
-
   <dependencies>
     <dependency>
       <groupId>com.google.code.gson</groupId>
       <artifactId>gson</artifactId>
       <version>${gson.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.google.errorprone</groupId>
+      <artifactId>error_prone_annotations</artifactId>
+      <version>2.38.0</version>
     </dependency>
   </dependencies>
 
