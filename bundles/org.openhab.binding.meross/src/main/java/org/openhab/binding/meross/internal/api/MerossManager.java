@@ -42,13 +42,6 @@ public class MerossManager {
         this.merossHttpConnector = merossHttpConnector;
     }
 
-    /**
-     * Initializes the mqtt connector with proper cloud credentials
-     *
-     */
-    public void initializeMerossMqttConnector() {
-        // No-op: MQTT disabled
-    }
 
     /**
      * @param deviceName The device name
