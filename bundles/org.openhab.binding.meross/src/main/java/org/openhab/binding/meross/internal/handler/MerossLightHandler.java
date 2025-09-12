@@ -21,7 +21,6 @@ import org.eclipse.jdt.annotation.Nullable;
 import org.openhab.binding.meross.internal.api.MerossEnum;
 import org.openhab.binding.meross.internal.api.MerossManager;
 import org.openhab.binding.meross.internal.config.MerossLightConfiguration;
-import org.openhab.binding.meross.internal.exception.MerossMqttConnackException;
 import org.openhab.core.library.types.OnOffType;
 import org.openhab.core.thing.Bridge;
 import org.openhab.core.thing.ChannelUID;
@@ -86,7 +85,7 @@ public class MerossLightHandler extends BaseThingHandler {
         try {
             int onlineStatus = manager.onlineStatus(config.lightName);
             initializeThing(onlineStatus);
-        } catch (IOException | MerossMqttConnackException e) {
+    } catch (IOException e) {
             updateStatus(ThingStatus.OFFLINE);
             return;
         }
@@ -150,7 +149,7 @@ public class MerossLightHandler extends BaseThingHandler {
                                     OnOffType.OFF.name());
                         }
                     }
-                } catch (IOException | MerossMqttConnackException e) {
+                } catch (IOException e) {
                     updateStatus(ThingStatus.OFFLINE, ThingStatusDetail.COMMUNICATION_ERROR,
                             "Cannot send command" + e.getMessage());
                 }

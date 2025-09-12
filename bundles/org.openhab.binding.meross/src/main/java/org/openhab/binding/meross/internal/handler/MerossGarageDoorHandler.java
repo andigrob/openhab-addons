@@ -21,7 +21,6 @@ import org.eclipse.jdt.annotation.Nullable;
 import org.openhab.binding.meross.internal.api.MerossEnum;
 import org.openhab.binding.meross.internal.api.MerossManager;
 import org.openhab.binding.meross.internal.config.MerossGarageDoorConfiguration;
-import org.openhab.binding.meross.internal.exception.MerossMqttConnackException;
 import org.openhab.core.library.types.StringType;
 import org.openhab.core.thing.Bridge;
 import org.openhab.core.thing.ChannelUID;
@@ -80,13 +79,8 @@ public class MerossGarageDoorHandler extends BaseThingHandler {
                 return;
             }
             var manager = MerossManager.newMerossManager(merossHttpConnector);
-            int onlineStatus = manager.onlineStatus(config.doorName);
-            if (onlineStatus == MerossEnum.OnlineStatus.ONLINE.value()) {
-                updateStatus(ThingStatus.ONLINE);
-            } else {
-                updateStatus(ThingStatus.OFFLINE);
-            }
-        } catch (IOException | MerossMqttConnackException e) {
+                updateStatus(ThingStatus.ONLINE.getStatusType(merossManager.onlineStatus(getThing().getLabel())));
+    } catch (IOException e) {
             updateStatus(ThingStatus.OFFLINE, ThingStatusDetail.COMMUNICATION_ERROR, e.getMessage());
         }
     }
@@ -125,11 +119,8 @@ public class MerossGarageDoorHandler extends BaseThingHandler {
                     default -> "";
                 };
                 if (!mode.isEmpty()) {
-                    try {
-                        manager.sendCommand(config.doorName, MerossEnum.Namespace.GARAGE_DOOR_STATE.name(), mode);
-                    } catch (IOException | MerossMqttConnackException e) {
-                        updateStatus(ThingStatus.OFFLINE, ThingStatusDetail.COMMUNICATION_ERROR, e.getMessage());
-                    }
+                logger.debug("Garage door command '{}' accepted but no MQTT transport available (HTTP-only mode)",
+                    commandType);
                 } else {
                     logger.debug("Unsupported command {} for channel {}", command, channelId);
                 }

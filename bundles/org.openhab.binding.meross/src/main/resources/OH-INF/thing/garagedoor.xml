@@ -4,13 +4,14 @@
     xmlns:thing="https://openhab.org/schemas/thing-description/v1.0.0"
     xsi:schemaLocation="https://openhab.org/schemas/thing-description/v1.0.0 https://openhab.org/schemas/thing-description-1.0.0.xsd">
 
+    <!-- NOTE: Experimental HTTP-only implementation; control channel is a placeholder (no actual open/close action yet) -->
     <thing-type id="garagedoorgeneric">
         <supported-bridge-type-refs>
             <bridge-type-ref id="gateway"/>
         </supported-bridge-type-refs>
 
         <label>Meross Garage Door Opener</label>
-        <description>Meross MSG100 / Garage Door Opener</description>
+    <description>Meross MSG100 / Garage Door Opener (EXPERIMENTAL, HTTP-only, limited functionality)</description>
 
         <channels>
             <channel id="door" typeId="garagedoor-state"/>
@@ -20,7 +21,7 @@
         <config-description>
             <parameter name="doorName" type="text" required="true">
                 <label>Door name</label>
-                <description>The name of the garage door device as registered to Meross account</description>
+                <description>The name of the garage door device as registered to Meross account (experimental support)</description>
             </parameter>
         </config-description>
     </thing-type>
@@ -28,7 +29,7 @@
     <channel-type id="garagedoor-state">
         <item-type>Contact</item-type>
         <label>Garage Door State</label>
-        <description>Indicates if the garage door is OPEN or CLOSED (currently not actively polled)</description>
+    <description>Planned OPEN/CLOSED state (not implemented yet)</description>
         <category>Door</category>
         <tags>
             <tag>OpenState</tag>
@@ -39,7 +40,7 @@
     <channel-type id="garagedoor-control">
         <item-type>String</item-type>
         <label>Garage Door Control</label>
-        <description>Send OPEN or CLOSE commands to the garage door</description>
+    <description>Placeholder OPEN/CLOSE commands (no effect yet)</description>
         <category>Door</category>
         <state pattern="%s"/>
     </channel-type>
