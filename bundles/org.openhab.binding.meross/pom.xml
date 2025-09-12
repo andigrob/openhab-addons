@@ -32,4 +32,9 @@
     </dependency>
   </dependencies>
 
+  <properties>
+    <!-- Mark dagger package optional; HiveMQ client bytecode references it but not needed at runtime -->
+    <bnd.importpackage>dagger;resolution:=optional,com.google.errorprone.annotations;resolution:=optional</bnd.importpackage>
+  </properties>
+
 </project>
