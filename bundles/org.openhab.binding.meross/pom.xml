@@ -22,4 +22,9 @@
     </dependency>
   </dependencies>
 
+  <properties>
+    <!-- Prevent mandatory OSGi import of compile-time only annotations from Gson -->
+    <bnd.importpackage>com.google.errorprone.annotations;resolution:=optional</bnd.importpackage>
+  </properties>
+
 </project>
