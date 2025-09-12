@@ -17,6 +17,7 @@ import static org.openhab.binding.meross.internal.MerossBindingConstants.*;
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
 import org.openhab.binding.meross.internal.handler.MerossBridgeHandler;
+import org.openhab.binding.meross.internal.handler.MerossGarageDoorHandler;
 import org.openhab.binding.meross.internal.handler.MerossLightHandler;
 import org.openhab.core.thing.Thing;
 import org.openhab.core.thing.ThingTypeUID;
@@ -48,6 +49,8 @@ public class MerossHandlerFactory extends BaseThingHandlerFactory {
             return new MerossBridgeHandler(thing);
         } else if (THING_TYPE_LIGHT.equals(thingTypeUID)) {
             return new MerossLightHandler(thing);
+        } else if (THING_TYPE_GARAGEDOOR.equals(thingTypeUID)) {
+            return new MerossGarageDoorHandler(thing);
         }
         return null;
     }

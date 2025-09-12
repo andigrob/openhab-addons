@@ -93,19 +93,28 @@ public class MerossDiscoveryService extends AbstractThingHandlerDiscoveryService
                 ThingTypeUID thingTypeUID;
                 if (isLightType(device.deviceType())) {
                     thingTypeUID = MerossBindingConstants.THING_TYPE_LIGHT;
+                } else if (isGarageDoorType(device.deviceType())) {
+                    thingTypeUID = MerossBindingConstants.THING_TYPE_GARAGEDOOR;
                 } else {
                     logger.debug("Unsupported device found: name {} : type {}", device.devName(), device.deviceType());
                     return;
                 }
                 ThingUID deviceThing = new ThingUID(thingTypeUID, thingHandler.getThing().getUID(), device.uuid());
                 Map<String, Object> deviceProperties = new HashMap<>();
-                deviceProperties.put(MerossBindingConstants.PROPERTY_DEVICE_NAME, device.devName());
+                if (thingTypeUID.equals(MerossBindingConstants.THING_TYPE_LIGHT)) {
+                    deviceProperties.put(MerossBindingConstants.PROPERTY_DEVICE_NAME, device.devName());
+                } else if (thingTypeUID.equals(MerossBindingConstants.THING_TYPE_GARAGEDOOR)) {
+                    deviceProperties.put(MerossBindingConstants.PROPERTY_GARAGEDOOR_NAME, device.devName());
+                }
                 deviceProperties.put(DEVICE_UUID, device.uuid());
                 deviceProperties.put(DEVICE_TYPE, device.deviceType());
                 deviceProperties.put(FIRMWARE_VERSION, device.firmwareVersion());
                 thingDiscovered(DiscoveryResultBuilder.create(deviceThing).withLabel(device.devName())
                         .withProperties(deviceProperties)
-                        .withRepresentationProperty(MerossBindingConstants.PROPERTY_DEVICE_NAME).withBridge(bridgeUID)
+                        .withRepresentationProperty(thingTypeUID.equals(MerossBindingConstants.THING_TYPE_LIGHT)
+                                ? MerossBindingConstants.PROPERTY_DEVICE_NAME
+                                : MerossBindingConstants.PROPERTY_GARAGEDOOR_NAME)
+                        .withBridge(bridgeUID)
                         .build());
             });
         }
@@ -114,6 +123,12 @@ public class MerossDiscoveryService extends AbstractThingHandlerDiscoveryService
     public boolean isLightType(String typeName) {
         String targetString = typeName.substring(0, 3);
         Set<String> types = MerossBindingConstants.DISCOVERABLE_LIGHT_HARDWARE_TYPES;
+        return types.stream().anyMatch(type -> type.equals(targetString));
+    }
+
+    public boolean isGarageDoorType(String typeName) {
+        String targetString = typeName.substring(0, 3);
+        Set<String> types = MerossBindingConstants.DISCOVERABLE_GARAGEDOOR_HARDWARE_TYPES;
         return types.stream().anyMatch(type -> type.equals(targetString));
     }
 }

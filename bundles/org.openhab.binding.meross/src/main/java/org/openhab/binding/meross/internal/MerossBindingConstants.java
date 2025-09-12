@@ -31,13 +31,21 @@ public class MerossBindingConstants {
     // List of all Thing Type UIDs
     public static final ThingTypeUID THING_TYPE_GATEWAY = new ThingTypeUID(BINDING_ID, "gateway");
     public static final ThingTypeUID THING_TYPE_LIGHT = new ThingTypeUID(BINDING_ID, "light");
-    static final Set<ThingTypeUID> SUPPORTED_THING_TYPES_UIDS = Set.of(THING_TYPE_GATEWAY, THING_TYPE_LIGHT);
+    public static final ThingTypeUID THING_TYPE_GARAGEDOOR = new ThingTypeUID(BINDING_ID, "garagedoor");
+    static final Set<ThingTypeUID> SUPPORTED_THING_TYPES_UIDS = Set.of(THING_TYPE_GATEWAY, THING_TYPE_LIGHT,
+        THING_TYPE_GARAGEDOOR);
 
-    public static final Set<ThingTypeUID> DISCOVERABLE_THING_TYPES_UIDS = Set.of(THING_TYPE_LIGHT);
+    public static final Set<ThingTypeUID> DISCOVERABLE_THING_TYPES_UIDS = Set.of(THING_TYPE_LIGHT,
+        THING_TYPE_GARAGEDOOR);
 
     // List of all known Meross light hardware types
     public static final Set<String> DISCOVERABLE_LIGHT_HARDWARE_TYPES = Set.of("msl", "mss");
+    // List of all known Meross garage door hardware types
+    public static final Set<String> DISCOVERABLE_GARAGEDOOR_HARDWARE_TYPES = Set.of("msg");
     // List of all Channel ids
     public static final String CHANNEL_POWER = "power";
+    public static final String CHANNEL_GARAGEDOOR_STATE = "door";
+    public static final String CHANNEL_GARAGEDOOR_CONTROL = "control";
     public static final String PROPERTY_DEVICE_NAME = "lightName";
+    public static final String PROPERTY_GARAGEDOOR_NAME = "doorName";
 }

@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<thing:thing-descriptions bindingId="meross"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:thing="https://openhab.org/schemas/thing-description/v1.0.0"
+    xsi:schemaLocation="https://openhab.org/schemas/thing-description/v1.0.0 https://openhab.org/schemas/thing-description-1.0.0.xsd">
+
+    <thing-type id="garagedoorgeneric">
+        <supported-bridge-type-refs>
+            <bridge-type-ref id="gateway"/>
+        </supported-bridge-type-refs>
+
+        <label>Meross Garage Door Opener</label>
+        <description>Meross MSG100 / Garage Door Opener</description>
+
+        <channels>
+            <channel id="door" typeId="garagedoor-state"/>
+            <channel id="control" typeId="garagedoor-control"/>
+        </channels>
+
+        <config-description>
+            <parameter name="doorName" type="text" required="true">
+                <label>Door name</label>
+                <description>The name of the garage door device as registered to Meross account</description>
+            </parameter>
+        </config-description>
+    </thing-type>
+
+    <channel-type id="garagedoor-state">
+        <item-type>Contact</item-type>
+        <label>Garage Door State</label>
+        <description>Indicates if the garage door is OPEN or CLOSED (currently not actively polled)</description>
+        <category>Door</category>
+        <tags>
+            <tag>OpenState</tag>
+        </tags>
+        <state readOnly="true"/>
+    </channel-type>
+
+    <channel-type id="garagedoor-control">
+        <item-type>String</item-type>
+        <label>Garage Door Control</label>
+        <description>Send OPEN or CLOSE commands to the garage door</description>
+        <category>Door</category>
+        <state pattern="%s"/>
+    </channel-type>
+</thing:thing-descriptions>

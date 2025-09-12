@@ -8,11 +8,13 @@ Supported thing types
 
 - `gateway` : Acts as a Bridge to your Meross cloud account.
 - `light` : Represents a light device like a Smart ambient light.
+- `garagedoorgeneric` : Meross MSG100 / Garage Door Opener (basic OPEN/CLOSE commands, state not yet polled)
 
-|   Meross Name       | Type   | Description         | Supported | Tested|
-|---------------------|--------|---------------------|-----------|--------|
-| Smart ambient light | msl430 | Smart ambient light | yes       | yes    |
-| Smart plug          | mss210 | Smart plug          | yes       | yes    |
+|   Meross Name        | Type    | Description               | Supported | Tested|
+|----------------------|---------|---------------------------|-----------|--------|
+| Smart ambient light  | msl430  | Smart ambient light       | yes       | yes    |
+| Smart plug           | mss210  | Smart plug                | yes       | yes    |
+| Garage Door Opener   | msg100  | Garage door opener (MSG100)| yes      | no     |
 
 ## Discovery
 
@@ -43,17 +45,20 @@ NOTICE: Due to  **Meross**&reg; security policy please minimize host connections
 
 ## Thing Configuration
 
-| Parameter | Type | Description                                             | Default | Required | Thing type id | Advanced |
-|-----------|------|---------------------------------------------------------|---------|----------|---------------|----------|
-| lightName | text | The name of the light as registered to Meross account   | N/A     | yes      | light         | no       |
+| Parameter | Type | Description                                                   | Default | Required | Thing type id      | Advanced |
+|-----------|------|---------------------------------------------------------------|---------|----------|--------------------|----------|
+| lightName | text | The name of the light as registered to Meross account         | N/A     | yes      | light              | no       |
+| doorName  | text | The name of the garage door device as registered to the account | N/A   | yes      | garagedoorgeneric  | no       |
 
 ## Channels
 
-Only power channel is supported:
+Channels:
 
-| Channel | Type   | Read/Write | Description                                                  |
-|---------|--------|------------|--------------------------------------------------------------|
-| power   | Switch | N/A        | Power bulb/plug capability to control bulbs and plugs on/off |
+| Channel | Type   | Read/Write | Description                                                          |
+|---------|--------|------------|----------------------------------------------------------------------|
+| power   | Switch | N/A        | Power bulb/plug capability to control bulbs and plugs on/off         |
+| door    | Contact| Read       | (Planned) Garage door state (OPEN/CLOSED)                             |
+| control | String | Write      | Send OPEN or CLOSE commands to the garage door (basic implementation) |
 
 NOTICE: Due to **Meross**&reg; security policy please limit communication to no more than 150 messages every one hour at the earliest convenience otherwise, the user is emailed by Meross of the limit exceed and if such a behaviour does not change the user's account will be **BANNED**!
 
@@ -68,6 +73,7 @@ NOTICE: Due to the above mentioned security policy  currently is not possible to
 ```java
 Bridge meross:gateway:mybridge "Meross bridge" [ hostName="https://iotx-eu.meross.com", userEmail="abcde" userPassword="fghij" ] {
     light SC_plug                 "Desk"       [lightName="Desk"]
+    garagedoorgeneric GD_main     "Main Garage" [doorName="Main Garage"]
 }
 ```
 
@@ -75,6 +81,8 @@ Bridge meross:gateway:mybridge "Meross bridge" [ hostName="https://iotx-eu.meros
 
 ```java
 Switch              iSC_plug                 "Desk"                                    { channel="meross:light:mybridge:SC_plug:power" }
+String              iGD_main_control         "Garage Control"                          { channel="meross:garagedoorgeneric:mybridge:GD_main:control" }
+Contact             iGD_main_state           "Garage State"                            { channel="meross:garagedoorgeneric:mybridge:GD_main:door" }
 ```
 
 ### meross.sitemap Example
