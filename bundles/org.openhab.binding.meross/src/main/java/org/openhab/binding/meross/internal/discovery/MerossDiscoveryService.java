@@ -121,14 +121,20 @@ public class MerossDiscoveryService extends AbstractThingHandlerDiscoveryService
     }
 
     public boolean isLightType(String typeName) {
-        String targetString = typeName.substring(0, 3);
+        if (typeName.length() < 3) {
+            return false;
+        }
+        String targetString = typeName.substring(0, 3).toLowerCase();
         Set<String> types = MerossBindingConstants.DISCOVERABLE_LIGHT_HARDWARE_TYPES;
-        return types.stream().anyMatch(type -> type.equals(targetString));
+        return types.stream().anyMatch(type -> type.equalsIgnoreCase(targetString));
     }
 
     public boolean isGarageDoorType(String typeName) {
-        String targetString = typeName.substring(0, 3);
+        if (typeName.length() < 3) {
+            return false;
+        }
+        String targetString = typeName.substring(0, 3).toLowerCase();
         Set<String> types = MerossBindingConstants.DISCOVERABLE_GARAGEDOOR_HARDWARE_TYPES;
-        return types.stream().anyMatch(type -> type.equals(targetString));
+        return types.stream().anyMatch(type -> type.equalsIgnoreCase(targetString));
     }
 }
