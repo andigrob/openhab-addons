@@ -83,6 +83,15 @@ public class MerossDiscoveryService extends AbstractThingHandlerDiscoveryService
             var merossHttpConnector = thingHandler.getMerossHttpConnector();
             if (merossHttpConnector != null) {
                 devices = merossHttpConnector.readDevices();
+                if (devices == null) {
+                    logger.debug("Device list null on first read - triggering on-demand fetch and retry");
+                    try {
+                        merossHttpConnector.fetchDevicesAndWrite(org.openhab.binding.meross.internal.handler.MerossBridgeHandler.DEVICE_FILE);
+                        devices = merossHttpConnector.readDevices();
+                    } catch (Exception e) {
+                        logger.debug("On-demand fetch failed: {}", e.getMessage());
+                    }
+                }
             }
         }
         if (devices == null || devices.isEmpty()) {

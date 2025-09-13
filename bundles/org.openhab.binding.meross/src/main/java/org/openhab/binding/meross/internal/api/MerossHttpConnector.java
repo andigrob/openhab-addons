@@ -199,10 +199,16 @@ public class MerossHttpConnector {
         Map<String, String> emptyMap = Collections.emptyMap();
         HttpResponse<String> response = postResponse(emptyMap, apiBaseUrl, MerossEnum.HttpEndpoint.DEV_LIST.value());
         JsonElement jsonElement = JsonParser.parseString(response.body());
+        if (logger.isDebugEnabled()) {
+            logger.debug("fetchDevices HTTP status={} bodyBytes={}", response.statusCode(), response.body().length());
+        }
         JsonElement dataElem = jsonElement.getAsJsonObject().get("data");
         if (dataElem != null && dataElem.isJsonObject() && dataElem.getAsJsonObject().has("deviceList")) {
             JsonElement deviceList = dataElem.getAsJsonObject().get("deviceList");
             if (deviceList != null && deviceList.isJsonArray()) {
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Extracted deviceList with {} entries", deviceList.getAsJsonArray().size());
+                }
                 return deviceList.toString();
             }
         }
