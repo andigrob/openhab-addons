@@ -199,7 +199,15 @@ public class MerossHttpConnector {
         Map<String, String> emptyMap = Collections.emptyMap();
         HttpResponse<String> response = postResponse(emptyMap, apiBaseUrl, MerossEnum.HttpEndpoint.DEV_LIST.value());
         JsonElement jsonElement = JsonParser.parseString(response.body());
-        return jsonElement.getAsJsonObject().get("data").toString();
+        JsonElement dataElem = jsonElement.getAsJsonObject().get("data");
+        if (dataElem != null && dataElem.isJsonObject() && dataElem.getAsJsonObject().has("deviceList")) {
+            JsonElement deviceList = dataElem.getAsJsonObject().get("deviceList");
+            if (deviceList != null && deviceList.isJsonArray()) {
+                return deviceList.toString();
+            }
+        }
+        // Fallback: return original data segment
+        return dataElem != null ? dataElem.toString() : "[]";
     }
 
     /**
@@ -229,6 +237,10 @@ public class MerossHttpConnector {
         }
         if (json != null) {
             writeFile(json, deviceFile);
+            logger.debug("Fetched devices JSON written ({} bytes) to {}", json.length(), deviceFile.getAbsolutePath());
+            if (logger.isTraceEnabled()) {
+                logger.trace("First 300 chars of devices JSON: {}", json.substring(0, Math.min(json.length(), 300)));
+            }
         }
     }
 
@@ -256,11 +268,35 @@ public class MerossHttpConnector {
         File file = new File(String.valueOf(deviceFile));
         ArrayList<Device> devices = null;
         try {
-            devices = new Gson().fromJson(readFile(file), type);
+            if (!file.exists()) {
+                logger.debug("Device file does not exist yet: {}", file.getAbsolutePath());
+            } else {
+                String raw = readFile(file);
+                if (logger.isTraceEnabled()) {
+                    logger.trace("Raw device file content ({} bytes): {}", raw.length(),
+                            raw.substring(0, Math.min(raw.length(), 300)));
+                }
+                devices = new Gson().fromJson(raw, type);
+                if (devices == null) {
+                    logger.debug(
+                            "Parsed device list is null. Check whether JSON structure matches expected array of devices.");
+                } else if (devices.isEmpty()) {
+                    logger.debug("Parsed device list is empty (0 devices) from file {}", file.getAbsolutePath());
+                } else {
+                    logger.debug("Parsed {} devices from file {}", devices.size(), file.getAbsolutePath());
+                }
+            }
         } catch (IOException | JsonSyntaxException e) {
-            logger.error("Error while reading devices from {}", file.getAbsolutePath());
+            logger.error("Error while reading devices from {}: {}", file.getAbsolutePath(), e.getMessage());
         }
         return devices;
+    }
+
+    /**
+     * Expose device file path for diagnostics.
+     */
+    public String getDeviceFilePath() {
+        return deviceFile.getAbsolutePath();
     }
 
     private String readFile(File file) throws IOException {

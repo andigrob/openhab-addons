@@ -86,7 +86,15 @@ public class MerossDiscoveryService extends AbstractThingHandlerDiscoveryService
             }
         }
         if (devices == null || devices.isEmpty()) {
-            logger.debug("No device found");
+            if (devices == null) {
+                logger.debug("No device found (device list null). Device file may not yet be written.");
+            } else {
+                logger.debug("No device found (0 entries parsed).");
+            }
+            var connector = thingHandler.getMerossHttpConnector();
+            if (connector != null) {
+                logger.debug("Device file path: {}", connector.getDeviceFilePath());
+            }
         } else {
             ThingUID bridgeUID = thingHandler.getThing().getUID();
             devices.forEach(device -> {
