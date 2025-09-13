@@ -21,6 +21,7 @@ import org.eclipse.jdt.annotation.Nullable;
 import org.openhab.binding.meross.internal.api.MerossEnum;
 import org.openhab.binding.meross.internal.api.MerossManager;
 import org.openhab.binding.meross.internal.config.MerossGarageDoorConfiguration;
+import org.openhab.core.library.types.OpenClosedType;
 import org.openhab.core.library.types.StringType;
 import org.openhab.core.thing.Bridge;
 import org.openhab.core.thing.ChannelUID;
@@ -115,29 +116,30 @@ public class MerossGarageDoorHandler extends BaseThingHandler {
         var manager = MerossManager.newMerossManager(merossHttpConnector);
         String channelId = channelUID.getId();
         if (CHANNEL_GARAGEDOOR_CONTROL.equals(channelId)) {
-            // Expect StringType commands: OPEN or CLOSE (future could map to UpDownType)
-            if (command instanceof StringType stringCommand) {
-                String value = stringCommand.toFullString().toUpperCase();
-                String mode = switch (value) {
-                    case "OPEN" -> "OPEN"; // Placeholder mapping
-                    case "CLOSE" -> "CLOSE"; // Placeholder mapping
-                    default -> "";
-                };
-                if (!mode.isEmpty()) {
-                    logger.debug("Garage door command '{}' accepted but no MQTT transport available (HTTP-only mode)",
-                            value);
+            if (command instanceof OpenClosedType openClosed) {
+                logger.debug("Garage door command '{}' accepted (HTTP-only placeholder, not dispatched)", openClosed);
+                // Future: invoke manager to send control if supported via cloud
+            } else if (command instanceof StringType st) {
+                // Accept legacy OPEN/CLOSE string
+                String value = st.toFullString().toUpperCase();
+                if ("OPEN".equals(value) || "CLOSE".equals(value)) {
+                    logger.debug("Garage door string command '{}' accepted (HTTP-only placeholder)", value);
                 } else {
-                    logger.debug("Unsupported command {} for channel {}", command, channelId);
+                    logger.debug("Unsupported string command {} for channel {}", command, channelId);
                 }
             } else if (command instanceof RefreshType) {
-                // No active polling implemented yet
-                logger.debug("Refresh not implemented for garage door state");
+                logger.debug("Refresh requested on control channel (ignored)");
+            } else {
+                logger.debug("Unsupported command type {} for channel {}", command.getClass().getSimpleName(), channelId);
             }
         } else if (CHANNEL_GARAGEDOOR_STATE.equals(channelId)) {
             if (command instanceof RefreshType) {
-                // Placeholder: real implementation would fetch Appliance.GarageDoor.State
-                // and update state via updateState(channelUID, OpenClosedType.OPEN/CLOSED)
-                logger.debug("Refresh garage door state (not yet implemented)");
+                logger.debug("Refresh garage door state (not implemented)");
+            }
+        } else if (CHANNEL_GARAGEDOOR_SIGNAL.equals(channelId)) {
+            if (command instanceof RefreshType) {
+                // Placeholder: set UNDEF or maybe a fixed dummy value; we choose to leave untouched for now
+                logger.debug("Refresh signal strength (not available in HTTP-only mode)");
             }
         }
     }

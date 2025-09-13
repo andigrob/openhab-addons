@@ -46,6 +46,7 @@ public class MerossBindingConstants {
     public static final String CHANNEL_POWER = "power";
     public static final String CHANNEL_GARAGEDOOR_STATE = "door";
     public static final String CHANNEL_GARAGEDOOR_CONTROL = "control";
+    public static final String CHANNEL_GARAGEDOOR_SIGNAL = "signal";
     public static final String PROPERTY_DEVICE_NAME = "lightName";
     public static final String PROPERTY_GARAGEDOOR_NAME = "doorName";
 }

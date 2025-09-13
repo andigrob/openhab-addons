@@ -16,10 +16,11 @@
         <channels>
             <channel id="door" typeId="garagedoor-state"/>
             <channel id="control" typeId="garagedoor-control"/>
+        <channels>
+            <channel id="door" typeId="garagedoor-state"/>
+            <channel id="control" typeId="garagedoor-control"/>
+            <channel id="signal" typeId="garagedoor-signal"/>
         </channels>
-
-        <config-description>
-            <parameter name="doorName" type="text" required="true">
                 <label>Door name</label>
                 <description>The name of the garage door device as registered to Meross account (experimental support)</description>
             </parameter>
@@ -38,10 +39,17 @@
     </channel-type>
 
     <channel-type id="garagedoor-control">
-        <item-type>String</item-type>
+        <item-type>OpenClose</item-type>
         <label>Garage Door Control</label>
-    <description>Placeholder OPEN/CLOSE commands (no effect yet)</description>
+        <description>Send OPEN/CLOSE (HTTP placeholder, no action yet)</description>
         <category>Door</category>
-        <state pattern="%s"/>
+    </channel-type>
+
+    <channel-type id="garagedoor-signal">
+        <item-type>Number:Dimensionless</item-type>
+        <label>Signal Strength</label>
+        <description>Placeholder signal strength (not available via HTTP-only)</description>
+        <category>SignalStrength</category>
+        <state readOnly="true" pattern="%.0f %%"/>
     </channel-type>
 </thing:thing-descriptions>
