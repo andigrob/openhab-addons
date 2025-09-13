@@ -47,6 +47,9 @@ public class MerossDiscoveryService extends AbstractThingHandlerDiscoveryService
     private final Logger logger = LoggerFactory.getLogger(MerossDiscoveryService.class);
     private static final int DISCOVER_TIMEOUT_SECONDS = 10;
     private @Nullable ScheduledFuture<?> scanTask;
+    private int initialRetryCount = 0;
+    private static final int MAX_INITIAL_RETRIES = 5;
+    private static final int INITIAL_RETRY_DELAY_SECONDS = 3;
 
     public MerossDiscoveryService() {
         super(MerossBridgeHandler.class, MerossBindingConstants.DISCOVERABLE_THING_TYPES_UIDS, DISCOVER_TIMEOUT_SECONDS,
@@ -55,7 +58,8 @@ public class MerossDiscoveryService extends AbstractThingHandlerDiscoveryService
 
     @Override
     public void startBackgroundDiscovery() {
-        discoverDevices();
+    // Delay first attempt slightly to allow bridge initialization & async fetchDataAsync to complete
+    scheduleDiscover(2);
     }
 
     @Override
@@ -64,7 +68,7 @@ public class MerossDiscoveryService extends AbstractThingHandlerDiscoveryService
         if (scanTask != null) {
             scanTask.cancel(true);
         }
-        this.scanTask = scheduler.schedule(() -> discoverDevices(), 0, TimeUnit.SECONDS);
+    this.scanTask = scheduler.schedule(this::discoverDevices, 0, TimeUnit.SECONDS);
     }
 
     @Override
@@ -104,13 +108,25 @@ public class MerossDiscoveryService extends AbstractThingHandlerDiscoveryService
             if (connector != null) {
                 logger.debug("Device file path: {}", connector.getDeviceFilePath());
             }
+            if (initialRetryCount < MAX_INITIAL_RETRIES) {
+                initialRetryCount++;
+                logger.debug("Scheduling retry {}/{} in {}s", initialRetryCount, MAX_INITIAL_RETRIES,
+                        INITIAL_RETRY_DELAY_SECONDS);
+                scheduleDiscover(INITIAL_RETRY_DELAY_SECONDS);
+            }
         } else {
+            // Reset retry counter upon success
+            initialRetryCount = 0;
             ThingUID bridgeUID = thingHandler.getThing().getUID();
             devices.forEach(device -> {
+                logger.debug("Evaluating device uuid={} name='{}' type='{}'", device.uuid(), device.devName(),
+                        device.deviceType());
                 ThingTypeUID thingTypeUID;
                 if (isLightType(device.deviceType())) {
+                    logger.debug("Classified as LIGHT (prefix match)");
                     thingTypeUID = MerossBindingConstants.THING_TYPE_LIGHT;
                 } else if (isGarageDoorType(device.deviceType())) {
+                    logger.debug("Classified as GARAGEDOOR (prefix match)");
                     thingTypeUID = MerossBindingConstants.THING_TYPE_GARAGEDOOR;
                 } else {
                     logger.debug("Unsupported device found: name {} : type {}", device.devName(), device.deviceType());
@@ -153,5 +169,13 @@ public class MerossDiscoveryService extends AbstractThingHandlerDiscoveryService
         String targetString = typeName.substring(0, 3).toLowerCase();
         Set<String> types = MerossBindingConstants.DISCOVERABLE_GARAGEDOOR_HARDWARE_TYPES;
         return types.stream().anyMatch(type -> type.equalsIgnoreCase(targetString));
+    }
+
+    private void scheduleDiscover(int delaySeconds) {
+        ScheduledFuture<?> scanTask = this.scanTask;
+        if (scanTask != null && !scanTask.isCancelled()) {
+            scanTask.cancel(true);
+        }
+        this.scanTask = scheduler.schedule(this::discoverDevices, delaySeconds, TimeUnit.SECONDS);
     }
 }
