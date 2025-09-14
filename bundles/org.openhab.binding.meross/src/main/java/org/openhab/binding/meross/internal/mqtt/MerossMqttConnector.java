@@ -28,6 +28,9 @@ public class MerossMqttConnector implements MqttCallback {
     private @Nullable MqttClient client;
     private volatile boolean connected = false;
     private String clientId = "openhab-meross-" + UUID.randomUUID();
+    private @Nullable String userId;
+    private @Nullable String key;
+    private @Nullable String token; // reserved for future use
 
     public MerossMqttConnector(String brokerHost) {
         this.brokerHost = brokerHost;
@@ -41,6 +44,17 @@ public class MerossMqttConnector implements MqttCallback {
         listeners.remove(listener);
     }
 
+    /**
+     * Store credentials for subsequent connect(). Password pattern: MD5(userId + key)
+     */
+    public void authenticate(String userId, String key, String token) {
+        this.userId = userId;
+        this.key = key;
+        this.token = token;
+        logger.debug("Stored Meross MQTT credentials userId={} keyLen={} tokenLen={}", userId,
+                key != null ? key.length() : -1, token != null ? token.length() : -1);
+    }
+
     public synchronized void connect() {
         if (connected) {
             return;
@@ -52,12 +66,19 @@ public class MerossMqttConnector implements MqttCallback {
             MqttConnectOptions opts = new MqttConnectOptions();
             opts.setAutomaticReconnect(true);
             opts.setCleanSession(true);
-            // Auth to be added later (username/password/signature)
-            logger.debug("Connecting to Meross MQTT broker {}", uri);
+            if (userId != null && key != null) {
+                String pwd = md5(userId + key);
+                opts.setUserName(userId);
+                opts.setPassword(pwd.toCharArray());
+                logger.debug("Connecting to Meross MQTT broker {} user={} pwdSet=true clientId={}", uri, userId, clientId);
+            } else {
+                logger.debug(
+                        "Connecting to Meross MQTT broker {} without credentials (expect auth failure) clientId={}", uri,
+                        clientId);
+            }
             client.connect(opts);
             connected = true;
             logger.info("Meross MQTT connected to {}", uri);
-            // Subscriptions will be added later
         } catch (MqttException e) {
             logger.debug("MQTT connect failed: {}", e.getMessage());
         }
@@ -78,15 +99,6 @@ public class MerossMqttConnector implements MqttCallback {
 
     public boolean isConnected() {
         return connected;
-    }
-
-    /**
-     * Placeholder for future Meross specific authentication (username/password or signature).
-     * Currently a no-op – Meross cloud seems to accept token-derived credentials which will be added later.
-     */
-    public void authenticate(String userId, String key, String token) {
-        // Intentionally left blank; actual Meross signing to be implemented in follow-up.
-        logger.trace("authenticate() called (deferred implementation) userId={}", userId);
     }
 
     /**
@@ -143,7 +155,6 @@ public class MerossMqttConnector implements MqttCallback {
         if (brokerHost.startsWith("tcp://") || brokerHost.startsWith("ssl://")) {
             return brokerHost;
         }
-        // assume ssl over 443 if not specified (placeholder); actual Meross may use different port
         return "ssl://" + brokerHost + ":443";
     }
 
@@ -168,5 +179,19 @@ public class MerossMqttConnector implements MqttCallback {
     @Override
     public void deliveryComplete(@Nullable IMqttDeliveryToken token) {
         // no-op
+    }
+
+    private static String md5(String input) {
+        try {
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("MD5");
+            byte[] digest = md.digest(input.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder();
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            return "";
+        }
     }
 }
