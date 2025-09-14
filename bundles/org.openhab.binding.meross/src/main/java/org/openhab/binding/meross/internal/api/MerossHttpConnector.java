@@ -283,10 +283,7 @@ public class MerossHttpConnector {
                             raw.substring(0, Math.min(raw.length(), 300)));
                 }
                 devices = new Gson().fromJson(raw, type);
-                if (devices == null) {
-                    logger.debug(
-                            "Parsed device list is null. Check whether JSON structure matches expected array of devices.");
-                } else if (devices.isEmpty()) {
+                if (devices == null || devices.isEmpty()) {
                     logger.debug("Parsed device list is empty (0 devices) from file {}", file.getAbsolutePath());
                 } else {
                     logger.debug("Parsed {} devices from file {}", devices.size(), file.getAbsolutePath());

@@ -37,7 +37,8 @@ public class TogglexCommand {
          * @return togglex command type, on mode
          */
         @Override
-        public byte[] commandType(String type) {
+    @SuppressWarnings("null") // Map literals are fully populated; null-safety warning can be suppressed
+    public byte[] commandType(String type) {
             Map<String, Object> payload = Map.of("togglex", Map.of("onoff", 1, "channel", 0));
             return MqttMessageBuilder.buildMqttMessage("SET", MerossEnum.Namespace.CONTROL_TOGGLEX.value(), payload);
         }
@@ -54,7 +55,8 @@ public class TogglexCommand {
          * @return togglex command type, off mode
          */
         @Override
-        public byte[] commandType(String type) {
+    @SuppressWarnings("null") // Map literals are fully populated; null-safety warning can be suppressed
+    public byte[] commandType(String type) {
             Map<String, Object> payload = Map.of("togglex", Map.of("onoff", 0, "channel", 0));
             return MqttMessageBuilder.buildMqttMessage("SET", MerossEnum.Namespace.CONTROL_TOGGLEX.value(), payload);
         }

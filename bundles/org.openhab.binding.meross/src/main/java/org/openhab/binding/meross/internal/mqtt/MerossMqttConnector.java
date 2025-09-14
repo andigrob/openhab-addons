@@ -5,6 +5,7 @@ import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
+import org.eclipse.jdt.annotation.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.eclipse.paho.client.mqttv3.IMqttDeliveryToken;
@@ -100,28 +101,25 @@ public class MerossMqttConnector implements MqttCallbackExtended {
 
     // --- MqttCallbackExtended ---
     @Override
-    public void connectComplete(boolean reconnect, @Nullable String serverURI) {
+    public void connectComplete(boolean reconnect, String serverURI) {
         logger.debug("MQTT connectComplete reconnect={} uri={}", reconnect, serverURI);
     }
 
     @Override
-    public void connectionLost(@Nullable Throwable cause) {
+    public void connectionLost(Throwable cause) {
         connected = false;
         logger.debug("MQTT connection lost: {}", cause != null ? cause.getMessage() : "<no message>");
     }
 
     @Override
-    public void messageArrived(@Nullable String topic, @Nullable MqttMessage message) throws Exception {
-        if (topic == null || message == null) {
-            return;
-        }
+    public void messageArrived(String topic, MqttMessage message) throws Exception {
         byte[] payload = message.getPayload();
         logger.trace("MQTT msg topic={} bytes={}", topic, payload.length);
         dispatch(null, topic, payload); // device UUID extraction later
     }
 
     @Override
-    public void deliveryComplete(@Nullable IMqttDeliveryToken token) {
+    public void deliveryComplete(IMqttDeliveryToken token) {
         // no-op for now
     }
 }

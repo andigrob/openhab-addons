@@ -118,7 +118,7 @@ public class MerossBridgeHandler extends BaseBridgeHandler {
         return config.enableMqtt;
     }
 
-    public @Nullable org.openhab.binding.meross.internal.mqtt.MerossMqttConnector getMqttConnector() {
+    public @Nullable MerossMqttConnector getMqttConnector() {
         return mqttConnector;
     }
 }
