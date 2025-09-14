@@ -78,24 +78,32 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
             return;
         }
         try {
+            // Always fetch data first (credentials + devices). Ensures credentials file exists for MQTT domain.
+            merossHttpConnectorLocal.fetchDataAsync();
+
             if (config.enableMqtt) {
-                String host = config.mqttHost.isBlank() ? config.hostName : config.mqttHost;
-                mqttConnector = new MerossMqttConnector(host);
-                logger.debug("Meross MQTT enabled (attempting async connect) host={}", host);
+                // Determine host priority: explicit mqttHost > credentials.mqttDomain > sanitized config.hostName
+                var credsNow = merossHttpConnectorLocal.readCredentials();
+                String candidate = config.mqttHost.isBlank() ? (credsNow != null && credsNow.mqttDomain() != null
+                        && !credsNow.mqttDomain().isBlank() ? credsNow.mqttDomain() : config.hostName)
+                        : config.mqttHost;
+                String sanitized = sanitizeHost(candidate);
+                mqttConnector = new MerossMqttConnector(sanitized);
+                logger.debug("Meross MQTT enabled (async connect) rawHost={} sanitized={} credsDomain={}"
+                        + " explicitHostProvided={}"
+                        , candidate, sanitized, credsNow != null ? credsNow.mqttDomain() : "<null>",
+                        !config.mqttHost.isBlank());
                 MerossMqttConnector connectorRef = mqttConnector;
                 scheduler.execute(() -> {
                     try {
                         if (connectorRef != null) {
                             connectorRef.connect();
-                            // After connect attempt, load credentials and subscribe
                             MerossHttpConnector http = merossHttpConnectorLocal;
                             if (connectorRef.isConnected() && http != null) {
-                                var creds = http.readCredentials();
+                                var creds = credsNow != null ? credsNow : http.readCredentials();
                                 if (creds != null) {
                                     connectorRef.addListener(this);
                                     connectorRef.authenticate(creds.userId(), creds.key(), creds.token());
-                                    // Meross topic model placeholder; refined parsing to come
-                                    // Subscribe generically to appliance namespace for each device UUID
                                     var devices = http.readDevices();
                                     if (devices != null && !devices.isEmpty()) {
                                         var topics = devices.stream().map(d -> "/appliance/" + d.uuid() + "/subscribe")
@@ -106,7 +114,7 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
                                         logger.debug("No devices available for MQTT subscription yet");
                                     }
                                 } else {
-                                    logger.debug("Credentials not available yet for MQTT subscription");
+                                    logger.debug("Credentials not available for MQTT subscription (post-connect)");
                                 }
                             }
                         }
@@ -117,7 +125,6 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
             } else {
                 logger.debug("Meross MQTT disabled via configuration.");
             }
-            merossHttpConnectorLocal.fetchDataAsync();
             updateStatus(ThingStatus.ONLINE);
         } catch (ConnectException | MerossApiException e) {
             updateStatus(ThingStatus.OFFLINE, ThingStatusDetail.COMMUNICATION_ERROR, e.getMessage());
@@ -153,5 +160,23 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
             logger.trace("MQTT RX topic={} bytes={} snippet={}", topic, payload.length, snippet);
         }
         // Future: parse JSON, update thing/channel states
+    }
+
+    private String sanitizeHost(String host) {
+        String h = host.trim();
+        if (h.startsWith("https://")) {
+            h = h.substring(8);
+        } else if (h.startsWith("http://")) {
+            h = h.substring(7);
+        }
+        // remove any leading // if present
+        while (h.startsWith("//")) {
+            h = h.substring(2);
+        }
+        // strip trailing slashes
+        while (h.endsWith("/")) {
+            h = h.substring(0, h.length() - 1);
+        }
+        return h;
     }
 }
