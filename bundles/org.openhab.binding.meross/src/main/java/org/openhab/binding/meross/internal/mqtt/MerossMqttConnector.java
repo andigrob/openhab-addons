@@ -30,7 +30,8 @@ public class MerossMqttConnector implements MqttCallback {
     private String clientId = "openhab-meross-" + UUID.randomUUID();
     private @Nullable String userId;
     private @Nullable String key;
-    private @Nullable String token; // reserved for future use
+    @SuppressWarnings("unused") // reserved for future use (may be needed for future authenticated topics)
+    private @Nullable String token; // reserved
 
     public MerossMqttConnector(String brokerHost) {
         this.brokerHost = brokerHost;
@@ -51,13 +52,13 @@ public class MerossMqttConnector implements MqttCallback {
         this.userId = userId;
         this.key = key;
         this.token = token;
-        logger.debug("Stored Meross MQTT credentials userId={} keyLen={} tokenLen={}", userId,
-                key != null ? key.length() : -1, token != null ? token.length() : -1);
+    logger.debug("Stored Meross MQTT credentials userId={} keyLen={} tokenLen={}", userId, key.length(),
+        token.length());
     }
 
     public synchronized void connect() {
         if (connected) {
-            return;
+            return; // already connected
         }
         try {
             String uri = inferBrokerURI();
@@ -66,11 +67,14 @@ public class MerossMqttConnector implements MqttCallback {
             MqttConnectOptions opts = new MqttConnectOptions();
             opts.setAutomaticReconnect(true);
             opts.setCleanSession(true);
-            if (userId != null && key != null) {
-                String pwd = md5(userId + key);
-                opts.setUserName(userId);
+            String localUser = userId; // copy volatile @Nullable to local
+            String localKey = key;
+            if (localUser != null && localKey != null) {
+                String pwd = md5(localUser + localKey);
+                opts.setUserName(localUser);
                 opts.setPassword(pwd.toCharArray());
-                logger.debug("Connecting to Meross MQTT broker {} user={} pwdSet=true clientId={}", uri, userId, clientId);
+                logger.debug("Connecting to Meross MQTT broker {} user={} pwdSet=true clientId={}", uri, localUser,
+                        clientId);
             } else {
                 logger.debug(
                         "Connecting to Meross MQTT broker {} without credentials (expect auth failure) clientId={}", uri,

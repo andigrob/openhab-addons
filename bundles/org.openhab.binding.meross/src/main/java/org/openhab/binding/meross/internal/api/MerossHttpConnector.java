@@ -155,14 +155,14 @@ public class MerossHttpConnector {
      * @throws IOException if the device UUID cannot be retrieved
      */
     public String getDevUUIDByDevName(String devName) throws IOException {
-        @Nullable
         ArrayList<Device> devices = readDevices();
-        if (devices != null) {
-            Optional<String> uuid = devices.stream().filter(device -> device.devName().equals(devName))
-                    .map(Device::uuid).findFirst();
-            if (uuid.isPresent()) {
-                return uuid.get();
-            }
+        if (devices == null) {
+            return ""; // no devices file yet
+        }
+        Optional<String> uuid = devices.stream().filter(device -> device.devName().equals(devName)).map(Device::uuid)
+                .findFirst();
+        if (uuid.isPresent()) {
+            return uuid.get();
         }
         return "";
     }
