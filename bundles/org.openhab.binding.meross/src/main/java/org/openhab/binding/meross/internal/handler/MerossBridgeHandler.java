@@ -15,6 +15,7 @@ package org.openhab.binding.meross.internal.handler;
 import java.io.File;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.openhab.binding.meross.internal.mqtt.MerossMqttConnector;
 import java.net.ConnectException;
 import java.util.Collection;
 import java.util.Set;
@@ -47,6 +48,7 @@ public class MerossBridgeHandler extends BaseBridgeHandler {
     private MerossBridgeConfiguration config = new MerossBridgeConfiguration();
     private @Nullable MerossHttpConnector merossHttpConnector;
     private final Logger logger = LoggerFactory.getLogger(MerossBridgeHandler.class);
+    private @Nullable MerossMqttConnector mqttConnector;
     private static final String CREDENTIAL_FILE_NAME = "meross" + File.separator + "meross_credentials.json";
     private static final String DEVICE_FILE_NAME = "meross" + File.separator + "meross_devices.json";
     public static final File CREDENTIALFILE = new File(
@@ -76,7 +78,8 @@ public class MerossBridgeHandler extends BaseBridgeHandler {
         }
         try {
             if (config.enableMqtt) {
-                logger.debug("Meross MQTT enabled (connector not yet implemented)." );
+                mqttConnector = new MerossMqttConnector(config.hostName);
+                logger.debug("Meross MQTT enabled (skeleton connector created, not connected)." );
             } else {
                 logger.debug("Meross MQTT disabled via configuration.");
             }
