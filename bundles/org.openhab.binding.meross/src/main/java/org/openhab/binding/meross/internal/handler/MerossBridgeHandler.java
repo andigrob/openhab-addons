@@ -94,10 +94,15 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
                         , candidate, sanitized, credsNow != null ? credsNow.mqttDomain() : "<null>",
                         !config.mqttHost.isBlank());
                 MerossMqttConnector connectorRef = mqttConnector;
-                scheduler.execute(() -> {
-                    try {
-                        if (connectorRef != null) {
-                            connectorRef.connect();
+                                if (credsNow != null) {
+                                    mqttConnector.authenticate(credsNow.userId(), credsNow.key(), credsNow.token());
+                                } else {
+                                    logger.debug("Meross MQTT credentials not yet available prior to connect (will try later)");
+                                }
+                                logger.debug(
+                                        "Meross MQTT enabled (async connect) rawHost={} sanitized={} credsDomain={} explicitHostProvided={} credsPreloaded={}",
+                                        candidate, sanitized, credsNow != null ? credsNow.mqttDomain() : "<null>", !config.mqttHost.isBlank(),
+                                        credsNow != null);
                             MerossHttpConnector http = merossHttpConnectorLocal;
                             if (connectorRef.isConnected() && http != null) {
                                 var creds = credsNow != null ? credsNow : http.readCredentials();
