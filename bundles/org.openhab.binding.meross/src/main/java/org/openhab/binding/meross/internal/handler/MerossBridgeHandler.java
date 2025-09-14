@@ -84,7 +84,9 @@ public class MerossBridgeHandler extends BaseBridgeHandler {
                 MerossMqttConnector connectorRef = mqttConnector;
                 scheduler.execute(() -> {
                     try {
-                        connectorRef.connect();
+                        if (connectorRef != null) {
+                            connectorRef.connect();
+                        }
                     } catch (Exception e) {
                         logger.debug("MQTT connect attempt failed: {}", e.getMessage());
                     }
