@@ -1,7 +1,7 @@
 package org.openhab.binding.meross.internal.mqtt;
 
+import java.security.SecureRandom;
 import java.util.List;
-import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
@@ -27,7 +27,7 @@ public class MerossMqttConnector implements MqttCallback {
     private final String brokerHost;
     private @Nullable MqttClient client;
     private volatile boolean connected = false;
-    private String clientId = "openhab-meross-" + UUID.randomUUID();
+    private String clientId = generatePrimaryClientId();
     private @Nullable String userId;
     private @Nullable String key;
     @SuppressWarnings("unused") // reserved for future use (may be needed for future authenticated topics)
@@ -67,14 +67,20 @@ public class MerossMqttConnector implements MqttCallback {
             MqttConnectOptions opts = new MqttConnectOptions();
             opts.setAutomaticReconnect(true);
             opts.setCleanSession(true);
+            opts.setKeepAliveInterval(30);
+            try {
+                opts.setMqttVersion(MqttConnectOptions.MQTT_VERSION_3_1_1);
+            } catch (NoSuchFieldError e) {
+                // ignore if constant not present in older lib
+            }
             String localUser = userId; // copy volatile @Nullable to local
             String localKey = key;
             if (localUser != null && localKey != null) {
                 String pwd = md5(localUser + localKey);
                 opts.setUserName(localUser);
                 opts.setPassword(pwd.toCharArray());
-                logger.debug("Connecting to Meross MQTT broker {} user={} pwdSet=true clientId={}", uri, localUser,
-                        clientId);
+                logger.debug("Connecting to Meross MQTT broker {} user={} pwd(md5 user+key)={}… clientId={}", uri,
+                        localUser, pwd.substring(0, Math.min(6, pwd.length())), clientId);
             } else {
                 logger.debug(
                         "Connecting to Meross MQTT broker {} without credentials (expect auth failure) clientId={}", uri,
@@ -84,8 +90,74 @@ public class MerossMqttConnector implements MqttCallback {
             connected = true;
             logger.info("Meross MQTT connected to {}", uri);
         } catch (MqttException e) {
-            logger.debug("MQTT connect failed: {}", e.getMessage());
+            String msg = e.getMessage();
+            logger.debug("MQTT connect failed: {}", msg);
+            // Fallback strategy for auth errors: change clientId and try alternative password formulas once
+            if (!connected && msg != null && msg.toLowerCase().contains("berechtigung") || (msg != null && msg.toLowerCase().contains("not authorized"))) {
+                attemptFallback();
+            }
         }
+    }
+
+    private void attemptFallback() {
+        String localUser = userId;
+        String localKey = key;
+        if (localUser == null || localKey == null) {
+            return; // nothing to do
+        }
+        // Try alternative clientId and password formulas
+        String altClientId = generateSecondaryClientId(localUser);
+        String[] pwCandidates = new String[] { md5(localUser + localKey), md5(localUser + (token != null ? token : "")),
+                localKey };
+        for (String candidate : pwCandidates) {
+            if (candidate == null || candidate.isEmpty()) {
+                continue;
+            }
+            try {
+                String uri = inferBrokerURI();
+                clientId = altClientId;
+                client = new MqttClient(uri, clientId);
+                client.setCallback(this);
+                MqttConnectOptions opts = new MqttConnectOptions();
+                opts.setAutomaticReconnect(true);
+                opts.setCleanSession(true);
+                opts.setKeepAliveInterval(30);
+                try {
+                    opts.setMqttVersion(MqttConnectOptions.MQTT_VERSION_3_1_1);
+                } catch (NoSuchFieldError e) {
+                    // ignore
+                }
+                opts.setUserName(localUser);
+                opts.setPassword(candidate.toCharArray());
+                logger.debug("Fallback MQTT attempt user={} pwdVariantPrefix={} clientId={}", localUser,
+                        candidate.substring(0, Math.min(6, candidate.length())), clientId);
+                client.connect(opts);
+                connected = true;
+                logger.info("Meross MQTT connected after fallback using variant");
+                return;
+            } catch (MqttException ex) {
+                logger.debug("Fallback variant failed: {}", ex.getMessage());
+            }
+        }
+    }
+
+    private String generatePrimaryClientId() {
+        return "app:" + randomHex(32);
+    }
+
+    private String generateSecondaryClientId(String user) {
+        return "app:" + user + "_" + randomHex(8);
+    }
+
+    private static String randomHex(int len) {
+        SecureRandom r = new SecureRandom();
+        byte[] b = new byte[len / 2];
+        r.nextBytes(b);
+        StringBuilder sb = new StringBuilder();
+        for (byte value : b) {
+            sb.append(String.format("%02x", value));
+        }
+        return sb.toString();
     }
 
     public synchronized void disconnect() {

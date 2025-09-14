@@ -82,52 +82,7 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
             merossHttpConnectorLocal.fetchDataAsync();
 
             if (config.enableMqtt) {
-                var credsNow = merossHttpConnectorLocal.readCredentials();
-                String candidate = config.mqttHost.isBlank() ? (credsNow != null && credsNow.mqttDomain() != null
-                        && !credsNow.mqttDomain().isBlank() ? credsNow.mqttDomain() : config.hostName)
-                        : config.mqttHost;
-                String sanitized = sanitizeHost(candidate);
-                mqttConnector = new MerossMqttConnector(sanitized);
-                if (credsNow != null) {
-                    mqttConnector.authenticate(credsNow.userId(), credsNow.key(), credsNow.token());
-                } else {
-                    logger.debug("Meross MQTT credentials not yet available prior to connect (will try later)");
-                }
-                logger.debug(
-                        "Meross MQTT enabled (async connect) rawHost={} sanitized={} credsDomain={} explicitHostProvided={} credsPreloaded={}",
-                        candidate, sanitized, credsNow != null ? credsNow.mqttDomain() : "<null>", !config.mqttHost.isBlank(),
-                        credsNow != null);
-                MerossMqttConnector connectorRef = mqttConnector;
-                scheduler.execute(() -> {
-                    try {
-                        if (connectorRef != null) {
-                            connectorRef.connect();
-                            MerossHttpConnector http = merossHttpConnectorLocal;
-                            if (connectorRef.isConnected() && http != null) {
-                                if (credsNow == null) { // late credential load
-                                    var lateCreds = http.readCredentials();
-                                    if (lateCreds != null) {
-                                        connectorRef.authenticate(lateCreds.userId(), lateCreds.key(), lateCreds.token());
-                                    } else {
-                                        logger.debug("Still no credentials available after MQTT connect");
-                                    }
-                                }
-                                connectorRef.addListener(this);
-                                var devices = http.readDevices();
-                                if (devices != null && !devices.isEmpty()) {
-                                    var topics = devices.stream().map(d -> "/appliance/" + d.uuid() + "/subscribe").distinct()
-                                            .toList();
-                                    connectorRef.subscribe(topics);
-                                    logger.info("Subscribed to {} Meross device topics", topics.size());
-                                } else {
-                                    logger.debug("No devices available for MQTT subscription yet");
-                                }
-                            }
-                        }
-                    } catch (Exception e) {
-                        logger.debug("MQTT connect attempt failed: {}", e.getMessage());
-                    }
-                });
+                startMqttAsync(merossHttpConnectorLocal);
             } else {
                 logger.debug("Meross MQTT disabled via configuration.");
             }
@@ -184,5 +139,47 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
             h = h.substring(0, h.length() - 1);
         }
         return h;
+    }
+
+    private void startMqttAsync(MerossHttpConnector httpConnector) {
+        scheduler.execute(() -> {
+            try {
+                var creds = httpConnector.readCredentials();
+                int attempts = 0;
+                while (creds == null && attempts < 5) { // wait up to ~5 * 2s = 10s
+                    attempts++;
+                    logger.debug("Waiting for Meross credentials (attempt {}/{})", attempts, 5);
+                    Thread.sleep(2000);
+                    creds = httpConnector.readCredentials();
+                }
+                if (creds == null) {
+                    logger.debug("Credentials not available after wait window; skipping MQTT startup");
+                    return;
+                }
+                String candidate = config.mqttHost.isBlank() ? (creds.mqttDomain() != null && !creds.mqttDomain().isBlank()
+                        ? creds.mqttDomain() : config.hostName) : config.mqttHost;
+                String sanitized = sanitizeHost(candidate);
+                mqttConnector = new MerossMqttConnector(sanitized);
+                mqttConnector.authenticate(creds.userId(), creds.key(), creds.token());
+                logger.debug(
+                        "Meross MQTT enabled (async connect) rawHost={} sanitized={} credsDomain={} explicitHostProvided={} credsPreloaded=true",
+                        candidate, sanitized, creds.mqttDomain(), !config.mqttHost.isBlank());
+                MerossMqttConnector connectorRef = mqttConnector;
+                connectorRef.connect();
+                if (connectorRef.isConnected()) {
+                    var devices = httpConnector.readDevices();
+                    if (devices != null && !devices.isEmpty()) {
+                        var topics = devices.stream().map(d -> "/appliance/" + d.uuid() + "/subscribe").distinct().toList();
+                        connectorRef.addListener(this);
+                        connectorRef.subscribe(topics);
+                        logger.info("Subscribed to {} Meross device topics", topics.size());
+                    } else {
+                        logger.debug("No devices available for MQTT subscription yet");
+                    }
+                }
+            } catch (Exception e) {
+                logger.debug("MQTT startup failed: {}", e.getMessage());
+            }
+        });
     }
 }
