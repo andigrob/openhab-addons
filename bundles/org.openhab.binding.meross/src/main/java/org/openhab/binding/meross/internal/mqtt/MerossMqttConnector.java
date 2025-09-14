@@ -52,8 +52,8 @@ public class MerossMqttConnector implements MqttCallback {
         this.userId = userId;
         this.key = key;
         this.token = token;
-    logger.debug("Stored Meross MQTT credentials userId={} keyLen={} tokenLen={}", userId, key.length(),
-        token.length());
+    logger.debug("Stored Meross MQTT credentials userId={} keyLen={} tokenLen={}", userId,
+        key != null ? key.length() : 0, token != null ? token.length() : 0);
     }
 
     public synchronized void connect() {

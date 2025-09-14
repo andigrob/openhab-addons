@@ -273,7 +273,7 @@ public class MerossHttpConnector {
         TypeToken<ArrayList<Device>> type = new TypeToken<>() {
         };
         File file = new File(String.valueOf(deviceFile));
-    ArrayList<Device> devices = null;
+        ArrayList<Device> devices = null;
         try {
             if (!file.exists()) {
                 logger.debug("Device file does not exist yet: {}", file.getAbsolutePath());

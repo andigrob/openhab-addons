@@ -15,6 +15,8 @@ package org.openhab.binding.meross.internal.handler;
 import java.io.File;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import org.openhab.binding.meross.internal.mqtt.MerossMqttConnector;
 import org.openhab.binding.meross.internal.mqtt.MerossMqttListener;
 import java.net.ConnectException;
@@ -123,7 +125,7 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
         }
         // Basic Meross PUSH parsing (header + namespace). Defensive: catch all exceptions so we do not break callback thread.
         try {
-            com.google.gson.JsonElement root = com.google.gson.JsonParser.parseString(json);
+            var root = JsonParser.parseString(json);
             if (!root.isJsonObject()) {
                 return;
             }
@@ -137,7 +139,7 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
             if (!"PUSH".equalsIgnoreCase(method)) {
                 return; // ignore non-push for now
             }
-            var payloadObj = obj.getAsJsonObject("payload");
+            JsonObject payloadObj = obj.getAsJsonObject("payload");
             if (namespace.startsWith("Appliance.Control.Sensor.LatestX")) {
                 handleSensorLatest(namespace, payloadObj);
             } else if (namespace.startsWith("Appliance.GarageDoor")) {
@@ -150,7 +152,7 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
         }
     }
 
-    private void handleSensorLatest(String namespace, @Nullable com.google.gson.JsonObject payload) {
+    private void handleSensorLatest(String namespace, @Nullable JsonObject payload) {
         if (payload == null) {
             return;
         }
@@ -158,7 +160,7 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
         logger.trace("SensorLatest namespace={} keys={}", namespace, payload.keySet());
     }
 
-    private void handleGarageDoor(String namespace, @Nullable com.google.gson.JsonObject payload) {
+    private void handleGarageDoor(String namespace, @Nullable JsonObject payload) {
         if (payload == null) {
             return;
         }
