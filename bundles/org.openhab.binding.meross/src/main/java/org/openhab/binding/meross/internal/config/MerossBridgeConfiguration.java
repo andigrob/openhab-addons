@@ -24,4 +24,5 @@ public class MerossBridgeConfiguration {
     public String hostName = "";
     public String userEmail = "";
     public String userPassword = "";
+    public boolean enableMqtt = true;
 }

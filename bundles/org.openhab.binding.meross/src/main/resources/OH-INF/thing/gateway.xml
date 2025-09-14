@@ -26,6 +26,12 @@
 				<label>Password</label>
 				<description>Password of your Meross Account</description>
 			</parameter>
+			<parameter name="enableMqtt" type="boolean" required="false">
+				<label>Enable MQTT</label>
+				<description>Use MQTT for realtime device state (recommended)</description>
+				<default>true</default>
+				<advanced>true</advanced>
+			</parameter>
 		</config-description>
 	</bridge-type>
 </thing:thing-descriptions>
