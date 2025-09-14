@@ -116,11 +116,70 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
     // --- MerossMqttListener ---
     @Override
     public void onMessage(@Nullable String deviceUuid, String topic, byte[] payload) {
+        String json = new String(payload, java.nio.charset.StandardCharsets.UTF_8);
         if (logger.isTraceEnabled()) {
-            String snippet = new String(payload, 0, Math.min(payload.length, 200));
-            logger.trace("MQTT RX topic={} bytes={} snippet={}", topic, payload.length, snippet);
+            logger.trace("MQTT RX topic={} bytes={} snippet={}", topic, payload.length,
+                    json.substring(0, Math.min(json.length(), 200)));
         }
-        // Future: parse JSON, update thing/channel states
+        // Basic Meross PUSH parsing (header + namespace). Defensive: catch all exceptions so we do not break callback thread.
+        try {
+            com.google.gson.JsonElement root = com.google.gson.JsonParser.parseString(json);
+            if (!root.isJsonObject()) {
+                return;
+            }
+            var obj = root.getAsJsonObject();
+            var header = obj.getAsJsonObject("header");
+            if (header == null) {
+                return;
+            }
+            String namespace = header.has("namespace") ? header.get("namespace").getAsString() : "";
+            String method = header.has("method") ? header.get("method").getAsString() : "";
+            if (!"PUSH".equalsIgnoreCase(method)) {
+                return; // ignore non-push for now
+            }
+            var payloadObj = obj.getAsJsonObject("payload");
+            if (namespace.startsWith("Appliance.Control.Sensor.LatestX")) {
+                handleSensorLatest(namespace, payloadObj);
+            } else if (namespace.startsWith("Appliance.GarageDoor")) {
+                handleGarageDoor(namespace, payloadObj);
+            } else {
+                logger.debug("Unhandled Meross namespace={} (len={}B)", namespace, payload.length);
+            }
+        } catch (Exception e) {
+            logger.debug("Failed to parse Meross MQTT payload: {}", e.getMessage());
+        }
+    }
+
+    private void handleSensorLatest(String namespace, @Nullable com.google.gson.JsonObject payload) {
+        if (payload == null) {
+            return;
+        }
+        // Placeholder: could extract temperature/humidity/etc. when needed
+        logger.trace("SensorLatest namespace={} keys={}", namespace, payload.keySet());
+    }
+
+    private void handleGarageDoor(String namespace, @Nullable com.google.gson.JsonObject payload) {
+        if (payload == null) {
+            return;
+        }
+        try {
+            // Common Meross garage door payload shape: { state: { channel: 0, open: 1|0, ... } }
+            if (payload.has("state") && payload.get("state").isJsonObject()) {
+                var state = payload.getAsJsonObject("state");
+                int open = state.has("open") ? state.get("open").getAsInt() : -1;
+                String status = switch (open) {
+                case 1 -> "OPEN"; // Meross often uses 1=open, 0=closed
+                case 0 -> "CLOSED";
+                default -> "UNKNOWN";
+                };
+                logger.debug("GarageDoor update: open={} mapped={} rawKeys={}", open, status, state.keySet());
+                // TODO: map to channel state update once channel is defined
+            } else {
+                logger.trace("GarageDoor payload without 'state' object: keys={}", payload.keySet());
+            }
+        } catch (Exception e) {
+            logger.debug("Error handling GarageDoor namespace {}: {}", namespace, e.getMessage());
+        }
     }
 
     private String sanitizeHost(String host) {
@@ -167,7 +226,6 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
                 MerossMqttConnector connectorRef = mqttConnector;
                 connectorRef.connect();
                 if (connectorRef.isConnected()) {
-                    var devices = httpConnector.readDevices();
                     connectorRef.addListener(this);
                     var userId = connectorRef.getUserId();
                     var appId = connectorRef.getAppId();
@@ -178,21 +236,13 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
                             topics.add("/app/" + userId + "-" + appId + "/subscribe");
                         }
                     }
-                    if (devices != null && !devices.isEmpty()) {
-                        for (var d : devices) {
-                            topics.add("/appliance/" + d.uuid() + "/publish"); // device publishes events here
-                        }
-                    } else {
-                        logger.debug("No devices available for MQTT device-level topics yet");
-                    }
-                    // Remove duplicates
                     topics = topics.stream().distinct().toList();
                     if (!topics.isEmpty()) {
-                        logger.debug("Subscribing to Meross topics: {}", topics);
+                        logger.debug("Subscribing to Meross app topics: {}", topics);
                         connectorRef.subscribe(topics);
-                        logger.info("Subscribed to {} Meross MQTT topics (user/app/device)", topics.size());
+                        logger.info("Subscribed to {} Meross MQTT app topics", topics.size());
                     } else {
-                        logger.debug("No Meross MQTT topics assembled (userId/appId/devices missing)");
+                        logger.debug("No Meross MQTT app topics assembled (userId/appId missing)");
                     }
                 }
             } catch (Exception e) {
