@@ -171,7 +171,7 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
             // Observed payload variants:
             // 1) {"state":{"channel":0,"open":1,...}}
             // 2) {"state":[{"channel":0,"open":1,...}]}
-            Integer openVal = null;
+            @Nullable Integer openVal = null;
             if (payload.has("state")) {
                 if (payload.get("state").isJsonObject()) {
                     var state = payload.getAsJsonObject("state");
@@ -206,7 +206,7 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
         }
     }
 
-    private static Integer safeInt(JsonObject obj, String key) {
+    private static @Nullable Integer safeInt(JsonObject obj, String key) {
         try {
             return obj.get(key).getAsInt();
         } catch (Exception e) {

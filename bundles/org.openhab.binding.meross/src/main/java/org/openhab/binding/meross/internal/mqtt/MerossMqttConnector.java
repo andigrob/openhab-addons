@@ -52,8 +52,8 @@ public class MerossMqttConnector implements MqttCallback {
         this.userId = userId;
         this.key = key;
         this.token = token;
-    logger.debug("Stored Meross MQTT credentials userId={} keyLen={} tokenLen={}", userId,
-        key != null ? key.length() : 0, token != null ? token.length() : 0);
+        logger.debug("Stored Meross MQTT credentials userId={} keyLen={} tokenLen={}", userId, key.length(),
+                token.length());
     }
 
     public synchronized void connect() {
@@ -107,8 +107,8 @@ public class MerossMqttConnector implements MqttCallback {
         }
         // Try alternative clientId and password formulas
         String altClientId = generateSecondaryClientId(localUser);
-        String[] pwCandidates = new String[] { md5(localUser + localKey), md5(localUser + (token != null ? token : "")),
-                localKey };
+    String tok = token != null ? token : "";
+    String[] pwCandidates = new String[] { md5(localUser + localKey), md5(localUser + tok), localKey };
         for (String candidate : pwCandidates) {
             if (candidate == null || candidate.isEmpty()) {
                 continue;
