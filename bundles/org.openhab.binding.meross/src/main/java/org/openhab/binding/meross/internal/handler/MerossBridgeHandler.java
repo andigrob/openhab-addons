@@ -168,22 +168,57 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
             return;
         }
         try {
-            // Common Meross garage door payload shape: { state: { channel: 0, open: 1|0, ... } }
-            if (payload.has("state") && payload.get("state").isJsonObject()) {
-                var state = payload.getAsJsonObject("state");
-                int open = state.has("open") ? state.get("open").getAsInt() : -1;
-                String status = switch (open) {
-                case 1 -> "OPEN"; // Meross often uses 1=open, 0=closed
-                case 0 -> "CLOSED";
-                default -> "UNKNOWN";
-                };
-                logger.debug("GarageDoor update: open={} mapped={} rawKeys={}", open, status, state.keySet());
-                // TODO: map to channel state update once channel is defined
-            } else {
-                logger.trace("GarageDoor payload without 'state' object: keys={}", payload.keySet());
+            // Observed payload variants:
+            // 1) {"state":{"channel":0,"open":1,...}}
+            // 2) {"state":[{"channel":0,"open":1,...}]}
+            Integer openVal = null;
+            if (payload.has("state")) {
+                if (payload.get("state").isJsonObject()) {
+                    var state = payload.getAsJsonObject("state");
+                    if (state.has("open")) {
+                        openVal = safeInt(state, "open");
+                        logGarageDoorState(state, openVal);
+                    }
+                } else if (payload.get("state").isJsonArray()) {
+                    var arr = payload.getAsJsonArray("state");
+                    if (!arr.isEmpty() && arr.get(0).isJsonObject()) {
+                        var state0 = arr.get(0).getAsJsonObject();
+                        if (state0.has("open")) {
+                            openVal = safeInt(state0, "open");
+                            logGarageDoorState(state0, openVal);
+                        }
+                    }
+                }
             }
+            if (openVal == null) {
+                logger.trace("GarageDoor: no open value found keys={}", payload.keySet());
+                return;
+            }
+            String status = switch (openVal) {
+            case 1 -> "OPEN";
+            case 0 -> "CLOSED";
+            default -> "UNKNOWN";
+            };
+            // TODO: locate thing/channel and update state (Contact) -> OPEN/CLOSED
+            logger.debug("GarageDoor interpreted state={} (openVal={})", status, openVal);
         } catch (Exception e) {
             logger.debug("Error handling GarageDoor namespace {}: {}", namespace, e.getMessage());
+        }
+    }
+
+    private static Integer safeInt(JsonObject obj, String key) {
+        try {
+            return obj.get(key).getAsInt();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private void logGarageDoorState(JsonObject stateObj, @Nullable Integer openVal) {
+        if (openVal == null) {
+            logger.trace("GarageDoor state object without open field keys={}", stateObj.keySet());
+        } else {
+            logger.trace("GarageDoor raw state open={} keys={}", openVal, stateObj.keySet());
         }
     }
 
