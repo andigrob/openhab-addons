@@ -16,6 +16,7 @@ import java.io.File;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.openhab.binding.meross.internal.mqtt.MerossMqttConnector;
+import org.openhab.binding.meross.internal.mqtt.MerossMqttListener;
 import java.net.ConnectException;
 import java.util.Collection;
 import java.util.Set;
@@ -44,7 +45,7 @@ import org.openhab.core.types.Command;
  * @author Giovanni Fabiani - Initial contribution
  */
 @NonNullByDefault
-public class MerossBridgeHandler extends BaseBridgeHandler {
+public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqttListener {
     private MerossBridgeConfiguration config = new MerossBridgeConfiguration();
     private @Nullable MerossHttpConnector merossHttpConnector;
     private final Logger logger = LoggerFactory.getLogger(MerossBridgeHandler.class);
@@ -86,6 +87,28 @@ public class MerossBridgeHandler extends BaseBridgeHandler {
                     try {
                         if (connectorRef != null) {
                             connectorRef.connect();
+                            // After connect attempt, load credentials and subscribe
+                            MerossHttpConnector http = merossHttpConnectorLocal;
+                            if (connectorRef.isConnected() && http != null) {
+                                var creds = http.readCredentials();
+                                if (creds != null) {
+                                    connectorRef.addListener(this);
+                                    connectorRef.authenticate(creds.userId(), creds.key(), creds.token());
+                                    // Meross topic model placeholder; refined parsing to come
+                                    // Subscribe generically to appliance namespace for each device UUID
+                                    var devices = http.readDevices();
+                                    if (devices != null && !devices.isEmpty()) {
+                                        var topics = devices.stream().map(d -> "/appliance/" + d.uuid() + "/subscribe")
+                                                .distinct().toList();
+                                        connectorRef.subscribe(topics);
+                                        logger.info("Subscribed to {} Meross device topics", topics.size());
+                                    } else {
+                                        logger.debug("No devices available for MQTT subscription yet");
+                                    }
+                                } else {
+                                    logger.debug("Credentials not available yet for MQTT subscription");
+                                }
+                            }
                         }
                     } catch (Exception e) {
                         logger.debug("MQTT connect attempt failed: {}", e.getMessage());
@@ -120,5 +143,15 @@ public class MerossBridgeHandler extends BaseBridgeHandler {
 
     public @Nullable MerossMqttConnector getMqttConnector() {
         return mqttConnector;
+    }
+
+    // --- MerossMqttListener ---
+    @Override
+    public void onMessage(@Nullable String deviceUuid, String topic, byte[] payload) {
+        if (logger.isTraceEnabled()) {
+            String snippet = new String(payload, 0, Math.min(payload.length, 200));
+            logger.trace("MQTT RX topic={} bytes={} snippet={}", topic, payload.length, snippet);
+        }
+        // Future: parse JSON, update thing/channel states
     }
 }

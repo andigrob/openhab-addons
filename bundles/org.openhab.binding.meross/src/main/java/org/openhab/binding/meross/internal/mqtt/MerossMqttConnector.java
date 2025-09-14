@@ -80,6 +80,54 @@ public class MerossMqttConnector implements MqttCallback {
         return connected;
     }
 
+    /**
+     * Placeholder for future Meross specific authentication (username/password or signature).
+     * Currently a no-op – Meross cloud seems to accept token-derived credentials which will be added later.
+     */
+    public void authenticate(String userId, String key, String token) {
+        // Intentionally left blank; actual Meross signing to be implemented in follow-up.
+        logger.trace("authenticate() called (deferred implementation) userId={}", userId);
+    }
+
+    /**
+     * Subscribe to a set of topics if connected. Silent no-op if disconnected.
+     */
+    public void subscribe(List<String> topics) {
+        MqttClient c = client;
+        if (!connected || c == null) {
+            logger.debug("subscribe() called while not connected ({} topics)", topics.size());
+            return;
+        }
+        for (String t : topics) {
+            try {
+                c.subscribe(t);
+                logger.debug("Subscribed to topic {}", t);
+            } catch (MqttException e) {
+                logger.debug("Failed subscribing to {}: {}", t, e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Publish helper (QoS 1, retained=false) for future command SET messages.
+     */
+    public void publish(String topic, byte[] payload) {
+        MqttClient c = client;
+        if (!connected || c == null) {
+            logger.debug("publish() called while not connected topic={} bytes={}", topic, payload.length);
+            return;
+        }
+        MqttMessage msg = new MqttMessage(payload);
+        msg.setQos(1);
+        msg.setRetained(false);
+        try {
+            c.publish(topic, msg);
+            logger.trace("Published bytes={} to {}", payload.length, topic);
+        } catch (MqttException e) {
+            logger.debug("Publish failed topic={} err={}", topic, e.getMessage());
+        }
+    }
+
     // Placeholder dispatch method for future use
     private void dispatch(@Nullable String deviceUuid, String topic, byte[] payload) {
         for (MerossMqttListener l : listeners) {
