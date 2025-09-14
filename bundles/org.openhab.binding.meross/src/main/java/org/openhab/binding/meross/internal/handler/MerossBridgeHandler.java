@@ -78,8 +78,16 @@ public class MerossBridgeHandler extends BaseBridgeHandler {
         }
         try {
             if (config.enableMqtt) {
-                mqttConnector = new MerossMqttConnector(config.hostName);
-                logger.debug("Meross MQTT enabled (skeleton connector created, not connected)." );
+                String host = config.mqttHost.isBlank() ? config.hostName : config.mqttHost;
+                mqttConnector = new MerossMqttConnector(host);
+                logger.debug("Meross MQTT enabled (attempting async connect) host={}", host);
+                scheduler.execute(() -> {
+                    try {
+                        mqttConnector.connect();
+                    } catch (Exception e) {
+                        logger.debug("MQTT connect attempt failed: {}", e.getMessage());
+                    }
+                });
             } else {
                 logger.debug("Meross MQTT disabled via configuration.");
             }

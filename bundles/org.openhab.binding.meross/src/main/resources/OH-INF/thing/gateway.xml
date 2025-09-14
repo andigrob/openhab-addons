@@ -32,6 +32,11 @@
 				<default>true</default>
 				<advanced>true</advanced>
 			</parameter>
+			<parameter name="mqttHost" type="text" required="false">
+				<label>MQTT Host Override</label>
+				<description>Optional manual MQTT host (leave empty to use cloud-provided domain)</description>
+				<advanced>true</advanced>
+			</parameter>
 		</config-description>
 	</bridge-type>
 </thing:thing-descriptions>
