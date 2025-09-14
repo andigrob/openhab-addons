@@ -5,6 +5,7 @@ import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
+import org.eclipse.jdt.annotation.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.eclipse.paho.client.mqttv3.IMqttDeliveryToken;

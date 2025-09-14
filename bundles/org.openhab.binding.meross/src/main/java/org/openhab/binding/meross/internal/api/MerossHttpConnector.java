@@ -87,8 +87,8 @@ public class MerossHttpConnector {
      * @return The http response
      * @throws IOException if it fails to return the http response
      */
-    private HttpResponse<String> postResponse(Map<String, String> paramsData, String uri, String path)
-            throws IOException {
+    @SuppressWarnings({ "null" }) // HttpClient API not annotated for nullness; body() guaranteed non-null
+    private HttpResponse<String> postResponse(Map<String, String> paramsData, String uri, String path) throws IOException {
         String dataToSign;
         String encodedParams;
         String authorizationValue;
@@ -113,10 +113,6 @@ public class MerossHttpConnector {
                 .POST(HttpRequest.BodyPublishers.ofString(payload)).build();
         try {
             HttpResponse<String> resp = client.sendAsync(postRequest, HttpResponse.BodyHandlers.ofString()).get();
-            // body() per HTTP spec is non-null, but static analyzer complains about type annotations; guard anyway
-            if (resp == null) {
-                throw new IOException("Null HttpResponse");
-            }
             return resp;
         } catch (InterruptedException | ExecutionException e) {
             throw new IOException("Error while posting data", e);
@@ -277,7 +273,7 @@ public class MerossHttpConnector {
         TypeToken<ArrayList<Device>> type = new TypeToken<>() {
         };
         File file = new File(String.valueOf(deviceFile));
-        ArrayList<Device> devices = null;
+    ArrayList<Device> devices = null;
         try {
             if (!file.exists()) {
                 logger.debug("Device file does not exist yet: {}", file.getAbsolutePath());
