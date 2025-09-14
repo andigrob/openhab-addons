@@ -101,14 +101,14 @@ public class MerossMqttConnector implements MqttCallback {
 
     // --- MqttCallback ---
     @Override
-    public void connectionLost(Throwable cause) {
+    public void connectionLost(@Nullable Throwable cause) {
         connected = false;
         String msg = (cause != null ? cause.getMessage() : "<no message>");
         logger.debug("MQTT connection lost: {}", msg);
     }
 
     @Override
-    public void messageArrived(String topic, MqttMessage message) throws Exception {
+    public void messageArrived(@Nullable String topic, @Nullable MqttMessage message) throws Exception {
         if (topic == null || message == null) {
             return;
         }
@@ -118,7 +118,7 @@ public class MerossMqttConnector implements MqttCallback {
     }
 
     @Override
-    public void deliveryComplete(IMqttDeliveryToken token) {
+    public void deliveryComplete(@Nullable IMqttDeliveryToken token) {
         // no-op
     }
 }
