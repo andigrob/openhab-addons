@@ -5,11 +5,10 @@ import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
-import org.eclipse.jdt.annotation.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.eclipse.paho.client.mqttv3.IMqttDeliveryToken;
-import org.eclipse.paho.client.mqttv3.MqttCallbackExtended;
+import org.eclipse.paho.client.mqttv3.MqttCallback;
 import org.eclipse.paho.client.mqttv3.MqttClient;
 import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.eclipse.paho.client.mqttv3.MqttException;
@@ -20,7 +19,7 @@ import org.eclipse.paho.client.mqttv3.MqttMessage;
  * signing / topics will be added in later steps.
  */
 @NonNullByDefault
-public class MerossMqttConnector implements MqttCallbackExtended {
+public class MerossMqttConnector implements MqttCallback {
     private final Logger logger = LoggerFactory.getLogger(MerossMqttConnector.class);
 
     private final List<MerossMqttListener> listeners = new CopyOnWriteArrayList<>();
@@ -99,27 +98,26 @@ public class MerossMqttConnector implements MqttCallbackExtended {
         return "ssl://" + brokerHost + ":443";
     }
 
-    // --- MqttCallbackExtended ---
-    @Override
-    public void connectComplete(boolean reconnect, String serverURI) {
-        logger.debug("MQTT connectComplete reconnect={} uri={}", reconnect, serverURI);
-    }
-
+    // --- MqttCallback ---
     @Override
     public void connectionLost(Throwable cause) {
         connected = false;
-        logger.debug("MQTT connection lost: {}", cause != null ? cause.getMessage() : "<no message>");
+        String msg = (cause != null ? cause.getMessage() : "<no message>");
+        logger.debug("MQTT connection lost: {}", msg);
     }
 
     @Override
     public void messageArrived(String topic, MqttMessage message) throws Exception {
+        if (topic == null || message == null) {
+            return;
+        }
         byte[] payload = message.getPayload();
         logger.trace("MQTT msg topic={} bytes={}", topic, payload.length);
-        dispatch(null, topic, payload); // device UUID extraction later
+        dispatch(null, topic, payload);
     }
 
     @Override
     public void deliveryComplete(IMqttDeliveryToken token) {
-        // no-op for now
+        // no-op
     }
 }

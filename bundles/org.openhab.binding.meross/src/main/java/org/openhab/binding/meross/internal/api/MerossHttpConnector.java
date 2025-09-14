@@ -112,7 +112,12 @@ public class MerossHttpConnector {
                 .header("Authorization", authorizationValue).header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(payload)).build();
         try {
-            return client.sendAsync(postRequest, HttpResponse.BodyHandlers.ofString()).get();
+            HttpResponse<String> resp = client.sendAsync(postRequest, HttpResponse.BodyHandlers.ofString()).get();
+            // body() per HTTP spec is non-null, but static analyzer complains about type annotations; guard anyway
+            if (resp == null) {
+                throw new IOException("Null HttpResponse");
+            }
+            return resp;
         } catch (InterruptedException | ExecutionException e) {
             throw new IOException("Error while posting data", e);
         }
