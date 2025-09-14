@@ -113,7 +113,7 @@ public class MerossGarageDoorHandler extends BaseThingHandler {
         if (merossHttpConnector == null) {
             return;
         }
-        var manager = MerossManager.newMerossManager(merossHttpConnector);
+    // Manager currently unused for HTTP-only placeholder
         String channelId = channelUID.getId();
         if (CHANNEL_GARAGEDOOR_CONTROL.equals(channelId)) {
             if (command instanceof OpenClosedType openClosed) {

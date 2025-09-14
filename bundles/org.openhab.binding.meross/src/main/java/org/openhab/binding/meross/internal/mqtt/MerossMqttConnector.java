@@ -1,6 +1,5 @@
 package org.openhab.binding.meross.internal.mqtt;
 
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -15,6 +14,7 @@ import org.eclipse.paho.client.mqttv3.MqttClient;
 import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.eclipse.paho.client.mqttv3.MqttException;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
+import org.eclipse.jdt.annotation.Nullable;
 
 /**
  * Skeleton for Meross MQTT connector. Real connection logic and Meross-specific
@@ -102,25 +102,28 @@ public class MerossMqttConnector implements MqttCallbackExtended {
 
     // --- MqttCallbackExtended ---
     @Override
-    public void connectComplete(boolean reconnect, String serverURI) {
+    public void connectComplete(boolean reconnect, @Nullable String serverURI) {
         logger.debug("MQTT connectComplete reconnect={} uri={}", reconnect, serverURI);
     }
 
     @Override
-    public void connectionLost(Throwable cause) {
+    public void connectionLost(@Nullable Throwable cause) {
         connected = false;
         logger.debug("MQTT connection lost: {}", cause != null ? cause.getMessage() : "<no message>");
     }
 
     @Override
-    public void messageArrived(String topic, MqttMessage message) throws Exception {
+    public void messageArrived(@Nullable String topic, @Nullable MqttMessage message) throws Exception {
+        if (topic == null || message == null) {
+            return;
+        }
         byte[] payload = message.getPayload();
         logger.trace("MQTT msg topic={} bytes={}", topic, payload.length);
         dispatch(null, topic, payload); // device UUID extraction later
     }
 
     @Override
-    public void deliveryComplete(IMqttDeliveryToken token) {
+    public void deliveryComplete(@Nullable IMqttDeliveryToken token) {
         // no-op for now
     }
 }

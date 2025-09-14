@@ -81,9 +81,10 @@ public class MerossBridgeHandler extends BaseBridgeHandler {
                 String host = config.mqttHost.isBlank() ? config.hostName : config.mqttHost;
                 mqttConnector = new MerossMqttConnector(host);
                 logger.debug("Meross MQTT enabled (attempting async connect) host={}", host);
+                MerossMqttConnector connectorRef = mqttConnector;
                 scheduler.execute(() -> {
                     try {
-                        mqttConnector.connect();
+                        connectorRef.connect();
                     } catch (Exception e) {
                         logger.debug("MQTT connect attempt failed: {}", e.getMessage());
                     }
