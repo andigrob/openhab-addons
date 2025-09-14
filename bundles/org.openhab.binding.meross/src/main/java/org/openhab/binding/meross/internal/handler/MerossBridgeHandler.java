@@ -168,13 +168,31 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
                 connectorRef.connect();
                 if (connectorRef.isConnected()) {
                     var devices = httpConnector.readDevices();
+                    connectorRef.addListener(this);
+                    var userId = connectorRef.getUserId();
+                    var appId = connectorRef.getAppId();
+                    java.util.List<String> topics = new java.util.ArrayList<>();
+                    if (userId != null) {
+                        topics.add("/app/" + userId + "/subscribe");
+                        if (appId != null) {
+                            topics.add("/app/" + userId + "-" + appId + "/subscribe");
+                        }
+                    }
                     if (devices != null && !devices.isEmpty()) {
-                        var topics = devices.stream().map(d -> "/appliance/" + d.uuid() + "/subscribe").distinct().toList();
-                        connectorRef.addListener(this);
-                        connectorRef.subscribe(topics);
-                        logger.info("Subscribed to {} Meross device topics", topics.size());
+                        for (var d : devices) {
+                            topics.add("/appliance/" + d.uuid() + "/publish"); // device publishes events here
+                        }
                     } else {
-                        logger.debug("No devices available for MQTT subscription yet");
+                        logger.debug("No devices available for MQTT device-level topics yet");
+                    }
+                    // Remove duplicates
+                    topics = topics.stream().distinct().toList();
+                    if (!topics.isEmpty()) {
+                        logger.debug("Subscribing to Meross topics: {}", topics);
+                        connectorRef.subscribe(topics);
+                        logger.info("Subscribed to {} Meross MQTT topics (user/app/device)", topics.size());
+                    } else {
+                        logger.debug("No Meross MQTT topics assembled (userId/appId/devices missing)");
                     }
                 }
             } catch (Exception e) {

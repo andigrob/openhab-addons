@@ -178,6 +178,30 @@ public class MerossMqttConnector implements MqttCallback {
     }
 
     /**
+     * Expose the Meross cloud userId used for authentication (may be null if not yet authenticated).
+     */
+    public @Nullable String getUserId() {
+        return userId;
+    }
+
+    /**
+     * Extract pseudo appId from the clientId (pattern "app:<hex>" or "app:<user>_<hex>").
+     * Returns the random hex part; null if unavailable.
+     */
+    public @Nullable String getAppId() {
+        String cid = clientId;
+        if (!cid.startsWith("app:")) {
+            return null;
+        }
+        String rest = cid.substring(4);
+        int us = rest.indexOf('_');
+        if (us >= 0 && us + 1 < rest.length()) {
+            return rest.substring(us + 1);
+        }
+        return rest.isEmpty() ? null : rest;
+    }
+
+    /**
      * Subscribe to a set of topics if connected. Silent no-op if disconnected.
      */
     public void subscribe(List<String> topics) {
@@ -191,7 +215,8 @@ public class MerossMqttConnector implements MqttCallback {
                 c.subscribe(t);
                 logger.debug("Subscribed to topic {}", t);
             } catch (MqttException e) {
-                logger.debug("Failed subscribing to {}: {}", t, e.getMessage());
+                int rc = e.getReasonCode();
+                logger.debug("Failed subscribing to {} rc={} msg={}", t, rc, e.getMessage());
             }
         }
     }
