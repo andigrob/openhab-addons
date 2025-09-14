@@ -52,6 +52,9 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
     private @Nullable MerossHttpConnector merossHttpConnector;
     private final Logger logger = LoggerFactory.getLogger(MerossBridgeHandler.class);
     private @Nullable MerossMqttConnector mqttConnector;
+    // Cached credential parts for MQTT message signing
+    private @Nullable String cachedUserId;
+    private @Nullable String cachedKey;
     private static final String CREDENTIAL_FILE_NAME = "meross" + File.separator + "meross_credentials.json";
     private static final String DEVICE_FILE_NAME = "meross" + File.separator + "meross_devices.json";
     public static final File CREDENTIALFILE = new File(
@@ -222,6 +225,8 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
                 String sanitized = sanitizeHost(candidate);
                 mqttConnector = new MerossMqttConnector(sanitized);
                 mqttConnector.authenticate(creds.userId(), creds.key(), creds.token());
+                cachedUserId = creds.userId();
+                cachedKey = creds.key();
                 logger.debug(
                         "Meross MQTT enabled (async connect) rawHost={} sanitized={} credsDomain={} explicitHostProvided={} credsPreloaded=true",
                         candidate, sanitized, creds.mqttDomain(), !config.mqttHost.isBlank());
@@ -243,6 +248,8 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
                         logger.debug("Subscribing to Meross app topics: {}", topics);
                         connectorRef.subscribe(topics);
                         logger.info("Subscribed to {} Meross MQTT app topics", topics.size());
+                        // Schedule initial GarageDoor state query shortly after subscribe (if credentials cached)
+                        scheduler.schedule(() -> sendInitialGarageDoorGets(httpConnector), 3, java.util.concurrent.TimeUnit.SECONDS);
                     } else {
                         logger.debug("No Meross MQTT app topics assembled (userId/appId missing)");
                     }
@@ -251,5 +258,74 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
                 logger.debug("MQTT startup failed: {}", e.getMessage());
             }
         });
+    }
+
+    private void sendInitialGarageDoorGets(MerossHttpConnector http) {
+        var devices = http.readDevices();
+        if (devices == null || devices.isEmpty()) {
+            logger.debug("No devices available for initial GarageDoor GET");
+            return;
+        }
+        for (var d : devices) {
+            if ("msg100".equalsIgnoreCase(d.deviceType())) {
+                sendGarageDoorGet(d.uuid());
+            }
+        }
+    }
+
+    private void sendGarageDoorGet(String uuid) {
+        MerossMqttConnector c = mqttConnector;
+        if (c == null || !c.isConnected()) {
+            return;
+        }
+        String user = cachedUserId;
+        String key = cachedKey;
+        if (user == null || key == null) {
+            logger.debug("Cannot sign GarageDoor GET (missing credentials)");
+            return;
+        }
+        long ts = System.currentTimeMillis() / 1000L;
+        String messageId = randomHex(32);
+        String sign = md5(messageId + key + ts);
+        // Minimal Meross GET frame
+        String json = "{" +
+                "\"header\":{" +
+                "\"messageId\":\"" + messageId + "\"," +
+                "\"namespace\":\"Appliance.GarageDoor.State\"," +
+                "\"method\":\"GET\"," +
+                "\"payloadVersion\":1," +
+                "\"from\":\"/app/" + user + "\"," +
+                "\"timestamp\":" + ts + "," +
+                "\"sign\":\"" + sign + "\"}," +
+                "\"payload\":{\"state\":{}}}";
+        // Topic: app-level publish (Meross cloud usually expects /appliance/<uuid>/subscribe for sending commands, but we only have app topics; try device publish path for command).
+        String topic = "/appliance/" + uuid + "/subscribe"; // using subscribe path for command per Meross patterns
+        c.publish(topic, json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        logger.debug("Sent GarageDoor GET for uuid={} msgId={} topic={}", uuid, messageId, topic);
+    }
+
+    private static String md5(String s) {
+        try {
+            var md = java.security.MessageDigest.getInstance("MD5");
+            byte[] dig = md.digest(s.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder();
+            for (byte b : dig) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    private static String randomHex(int len) {
+        java.security.SecureRandom r = new java.security.SecureRandom();
+        byte[] b = new byte[len / 2];
+        r.nextBytes(b);
+        StringBuilder sb = new StringBuilder();
+        for (byte value : b) {
+            sb.append(String.format("%02x", value));
+        }
+        return sb.toString();
     }
 }
