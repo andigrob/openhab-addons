@@ -11,16 +11,16 @@
         </supported-bridge-type-refs>
 
         <label>Meross Garage Door Opener</label>
-    <description>Meross MSG100 / Garage Door Opener (EXPERIMENTAL, HTTP-only, limited functionality)</description>
+        <description>Meross MSG100 / Garage Door Opener (EXPERIMENTAL, HTTP-only, limited functionality)</description>
 
-        <channels>
-            <channel id="door" typeId="garagedoor-state"/>
-            <channel id="control" typeId="garagedoor-control"/>
         <channels>
             <channel id="door" typeId="garagedoor-state"/>
             <channel id="control" typeId="garagedoor-control"/>
             <channel id="signal" typeId="garagedoor-signal"/>
         </channels>
+
+        <config-description>
+            <parameter name="doorName" type="text" required="false">
                 <label>Door name</label>
                 <description>The name of the garage door device as registered to Meross account (experimental support)</description>
             </parameter>
