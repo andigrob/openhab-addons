@@ -59,6 +59,15 @@ NOTICE: Due to  **Meross**&reg; security policy please minimize host connections
 | control | garagedoorgeneric    | String  | W    | Experimental OPEN/CLOSE (cloud MQTT SET, 3s throttle) |
 
 ## Security & Rate Limits
+### Garage Door State Semantics (MSG100)
+
+Der MSG100 besitzt nur einen Endlagensensor für den geschlossenen Zustand. Es gibt keinen separaten Sensor für "offen" oder Zwischenpositionen. Bedeutungen:
+
+- `CLOSED`  = Sensor meldet geschlossen.
+- `OPEN`    = Sensor meldet nicht geschlossen (Tor öffnet sich gerade, schließt sich gerade oder steht irgendwo >0% offen). Eine Unterscheidung zwischen „ganz offen" und „in Bewegung" ist hardwareseitig nicht möglich.
+
+Automatisierungen sollten deshalb bei sicherheitskritischen Aktionen (z.B. erneutes Schließen) ggf. eine zusätzliche Verifikation oder Verzögerung einbauen.
+
 
 TLS: All Meross cloud MQTT connections are forced to TLS (ssl://). If a `tcp://` host is configured it will be transparently upgraded and a warning logged. An internal config flag `allowInsecureTls` exists but defaults to `false` and currently only governs warning verbosity (no plaintext fallback implemented).
 
