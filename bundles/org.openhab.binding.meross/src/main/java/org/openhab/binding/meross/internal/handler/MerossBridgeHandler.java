@@ -74,6 +74,8 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
     // Track if a single retry was already scheduled for uuid
     // Track attempt index (1..2) for initial state acquisition
     private final java.util.concurrent.ConcurrentMap<String, Integer> garageInitAttempts = new java.util.concurrent.ConcurrentHashMap<>();
+    // Throttle map for outbound garage door control commands (uuid -> last epoch ms)
+    private final java.util.concurrent.ConcurrentMap<String, Long> lastGarageControl = new java.util.concurrent.ConcurrentHashMap<>();
 
     public MerossBridgeHandler(Thing thing) {
         super((Bridge) thing);
@@ -154,7 +156,8 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
             String namespace = header.has("namespace") ? header.get("namespace").getAsString() : "";
             String method = header.has("method") ? header.get("method").getAsString() : "";
             boolean isPush = "PUSH".equalsIgnoreCase(method);
-            boolean isAck = "ACK".equalsIgnoreCase(method) || "GETACK".equalsIgnoreCase(method);
+        boolean isAck = "ACK".equalsIgnoreCase(method) || "GETACK".equalsIgnoreCase(method)
+            || "SETACK".equalsIgnoreCase(method);
             String messageId = header.has("messageId") ? header.get("messageId").getAsString() : "";
             String from = header.has("from") ? header.get("from").getAsString() : "";
             // Expected patterns: /appliance/<uuid>/subscribe or /app/<user>
@@ -486,6 +489,53 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
                 }
             }, 4, java.util.concurrent.TimeUnit.SECONDS);
         }
+    }
+
+    /**
+     * Send an outbound SET (open / close) to the garage door. openVal: 1=open, 0=close.
+     * Returns true if the message was published (not throttled / missing creds).
+     */
+    public boolean sendGarageDoorSet(String uuid, int openVal) {
+        MerossMqttConnector c = mqttConnector;
+        if (c == null || !c.isConnected()) {
+            logger.debug("Cannot send GarageDoor SET (MQTT not connected) uuid={}", uuid);
+            return false;
+        }
+        String user = cachedUserId;
+        String key = cachedKey;
+        if (user == null || key == null) {
+            logger.debug("Cannot sign GarageDoor SET (missing credentials)");
+            return false;
+        }
+        long now = System.currentTimeMillis();
+        Long last = lastGarageControl.get(uuid);
+        if (last != null && (now - last) < 3000) { // 3s throttle
+            logger.debug("Throttling GarageDoor SET uuid={} ({}ms since last)", uuid, (now - last));
+            return false;
+        }
+        lastGarageControl.put(uuid, now);
+        long ts = now / 1000L;
+        String messageId = randomHex(32);
+        String sign = md5(messageId + key + ts);
+        String base = "/app/" + user + (cachedAppId != null ? ("-" + cachedAppId) : "");
+        String fromPath = base + "/subscribe"; // mirror effective GET variant
+        // Build SET frame (single channel 0 assumption)
+        String json = "{" +
+                "\"header\":{" +
+                "\"messageId\":\"" + messageId + "\"," +
+                "\"namespace\":\"Appliance.GarageDoor.State\"," +
+                "\"method\":\"SET\"," +
+                "\"payloadVersion\":1," +
+                "\"from\":\"" + fromPath + "\"," +
+                "\"timestamp\":" + ts + "," +
+                "\"sign\":\"" + sign + "\"}," +
+                "\"payload\":{\"state\":{\"channel\":0,\"open\":" + openVal + "}}}";
+        String topic = "/appliance/" + uuid + "/subscribe";
+        c.publish(topic, json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        pendingGarageGets.put(messageId, uuid); // reuse map to resolve SETACK
+        logger.debug("Sent GarageDoor SET open={} uuid={} msgId={} topic={} fromPath={} (pending mapped)", openVal,
+                uuid, messageId, topic, fromPath);
+        return true;
     }
 
     private void maybeRequestGarageState(String uuid) {

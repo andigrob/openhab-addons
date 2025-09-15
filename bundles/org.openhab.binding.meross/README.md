@@ -56,7 +56,7 @@ NOTICE: Due to  **Meross**&reg; security policy please minimize host connections
 |---------|----------------------|---------|------|-------------|
 | power   | light / plug types   | Switch  | R/W  | Turn device on/off |
 | door    | garagedoorgeneric    | Contact | R    | Garage door state (OPEN/CLOSED) via cloud MQTT (initial GET + PUSH) |
-| control | garagedoorgeneric    | String  | W    | Reserved for OPEN/CLOSE (not implemented yet) |
+| control | garagedoorgeneric    | String  | W    | Experimental OPEN/CLOSE (cloud MQTT SET, 3s throttle) |
 
 ## Security & Rate Limits
 
@@ -85,7 +85,7 @@ Bridge meross:gateway:mybridge "Meross bridge" [ hostName="https://iotx-eu.meros
 
 ```java
 Switch              iSC_plug                 "Desk"                                    { channel="meross:light:mybridge:SC_plug:power" }
-String              iGD_main_control         "Garage Control (future)"                  { channel="meross:garagedoorgeneric:mybridge:GD_main:control" }
+String              iGD_main_control         "Garage Control"                           { channel="meross:garagedoorgeneric:mybridge:GD_main:control" }
 Contact             iGD_main_state           "Garage State"                              { channel="meross:garagedoorgeneric:mybridge:GD_main:door" }
 ```
 

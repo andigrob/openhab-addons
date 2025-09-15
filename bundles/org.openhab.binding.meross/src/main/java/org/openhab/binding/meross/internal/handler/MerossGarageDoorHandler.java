@@ -116,21 +116,40 @@ public class MerossGarageDoorHandler extends BaseThingHandler {
     // Manager currently unused for HTTP-only placeholder
         String channelId = channelUID.getId();
         if (CHANNEL_GARAGEDOOR_CONTROL.equals(channelId)) {
-            if (command instanceof OpenClosedType openClosed) {
-                logger.debug("Garage door command '{}' accepted (HTTP-only placeholder, not dispatched)", openClosed);
-                // Future: invoke manager to send control if supported via cloud
+            int desired = -1; // 1=open,0=close
+            if (command instanceof OpenClosedType oc) {
+                desired = (oc == OpenClosedType.OPEN) ? 1 : 0;
             } else if (command instanceof StringType st) {
-                // Accept legacy OPEN/CLOSE string
-                String value = st.toFullString().toUpperCase();
-                if ("OPEN".equals(value) || "CLOSE".equals(value)) {
-                    logger.debug("Garage door string command '{}' accepted (HTTP-only placeholder)", value);
+                String v = st.toFullString().trim().toUpperCase();
+                if ("OPEN".equals(v)) {
+                    desired = 1;
+                } else if ("CLOSE".equals(v)) {
+                    desired = 0;
                 } else {
-                    logger.debug("Unsupported string command {} for channel {}", command, channelId);
+                    logger.debug("Unsupported string command '{}' on garage control", v);
                 }
             } else if (command instanceof RefreshType) {
-                logger.debug("Refresh requested on control channel (ignored)");
+                logger.debug("Refresh on control channel ignored (state comes via MQTT)");
             } else {
-                logger.debug("Unsupported command type {} for channel {}", command.getClass().getSimpleName(), channelId);
+                logger.debug("Unsupported command type {} for control channel", command.getClass().getSimpleName());
+            }
+            if (desired != -1) {
+                // Resolve uuid again (quick lookup) to ensure mapping; we rely on bridge map built earlier
+                var http = merossHttpConnector;
+                if (http != null) {
+                    try {
+                        String uuid = http.getDevUUIDByDevName(config.doorName);
+                        if (!uuid.isEmpty()) {
+                            boolean sent = bridgeHandler.sendGarageDoorSet(uuid, desired);
+                            logger.debug("Garage door {} command {} -> sent={} uuid={}", config.doorName,
+                                    desired == 1 ? "OPEN" : "CLOSE", sent, uuid);
+                        } else {
+                            logger.debug("Cannot map doorName '{}' to UUID for command", config.doorName);
+                        }
+                    } catch (IOException e) {
+                        logger.debug("Error resolving UUID for doorName '{}' {}", config.doorName, e.getMessage());
+                    }
+                }
             }
         } else if (CHANNEL_GARAGEDOOR_STATE.equals(channelId)) {
             if (command instanceof RefreshType) {
