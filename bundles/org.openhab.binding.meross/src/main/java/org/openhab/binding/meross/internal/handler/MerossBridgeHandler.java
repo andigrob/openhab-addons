@@ -55,6 +55,7 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
     // Cached credential parts for MQTT message signing
     private @Nullable String cachedUserId;
     private @Nullable String cachedKey;
+    private @Nullable String cachedAppId;
     private static final String CREDENTIAL_FILE_NAME = "meross" + File.separator + "meross_credentials.json";
     private static final String DEVICE_FILE_NAME = "meross" + File.separator + "meross_devices.json";
     public static final File CREDENTIALFILE = new File(
@@ -391,6 +392,7 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
                     connectorRef.addListener(this);
                     var userId = connectorRef.getUserId();
                     var appId = connectorRef.getAppId();
+                    cachedAppId = appId;
                     java.util.List<String> topics = new java.util.ArrayList<>();
                     if (userId != null) {
                         topics.add("/app/" + userId + "/subscribe");
@@ -444,14 +446,16 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
         long ts = System.currentTimeMillis() / 1000L;
         String messageId = randomHex(32);
         String sign = md5(messageId + key + ts);
-        // Minimal Meross GET frame
+    // Prefer /app/<user>-<appId> path if appId known
+    String fromPath = "/app/" + user + (cachedAppId != null ? ("-" + cachedAppId) : "");
+    // Minimal Meross GET frame
         String json = "{" +
                 "\"header\":{" +
                 "\"messageId\":\"" + messageId + "\"," +
                 "\"namespace\":\"Appliance.GarageDoor.State\"," +
                 "\"method\":\"GET\"," +
                 "\"payloadVersion\":1," +
-                "\"from\":\"/app/" + user + "\"," +
+        "\"from\":\"" + fromPath + "\"," +
                 "\"timestamp\":" + ts + "," +
                 "\"sign\":\"" + sign + "\"}," +
                 "\"payload\":{\"state\":{}}}";
@@ -459,7 +463,7 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
         String topic = "/appliance/" + uuid + "/subscribe"; // using subscribe path for command per Meross patterns
     c.publish(topic, json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
     pendingGarageGets.put(messageId, uuid);
-    logger.debug("Sent GarageDoor GET for uuid={} msgId={} topic={} (pending mapped)", uuid, messageId, topic);
+    logger.debug("Sent GarageDoor GET for uuid={} msgId={} topic={} (pending mapped) fromPath={}", uuid, messageId, topic, fromPath);
     }
 
     private void maybeRequestGarageState(String uuid) {
