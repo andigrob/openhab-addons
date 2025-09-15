@@ -72,10 +72,8 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
     // Map pending GET messageId -> uuid to resolve ACK without /appliance path
     private final java.util.concurrent.ConcurrentMap<String, String> pendingGarageGets = new java.util.concurrent.ConcurrentHashMap<>();
     // Track if a single retry was already scheduled for uuid
-    private final java.util.Set<String> garageGetRetried = java.util.Collections
-        .newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>());
-    // Track which variant was used first (uuid -> fromPath) for diagnostics
-    private final java.util.concurrent.ConcurrentMap<String, String> firstGetFromPath = new java.util.concurrent.ConcurrentHashMap<>();
+    // Track attempt index (1..3) for initial state acquisition
+    private final java.util.concurrent.ConcurrentMap<String, Integer> garageInitAttempts = new java.util.concurrent.ConcurrentHashMap<>();
 
     public MerossBridgeHandler(Thing thing) {
         super((Bridge) thing);
@@ -455,14 +453,16 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
         String messageId = randomHex(32);
         String sign = md5(messageId + key + ts);
     // Prefer /app/<user>-<appId> path if appId known
-        // Variant A (preferred): /app/<user>-<appId>
-        // Retry Variant B: /app/<user>/subscribe (some MQTT stacks expect subscribe suffix for ACK correlation)
-        boolean retry = garageGetRetried.contains(uuid);
-        String baseA = "/app/" + user + (cachedAppId != null ? ("-" + cachedAppId) : "");
-        String fromPath = retry ? ("/app/" + user + "/subscribe") : baseA;
-        if (!retry) {
-            firstGetFromPath.putIfAbsent(uuid, fromPath);
-        }
+    int attempt = garageInitAttempts.merge(uuid, 1, Integer::sum);
+    // Ordered variants: 1) /app/<user>-<appId>
+    //                    2) /app/<user>-<appId>/subscribe
+    //                    3) /app/<user>/subscribe
+    String base = "/app/" + user + (cachedAppId != null ? ("-" + cachedAppId) : "");
+    String fromPath = switch (attempt) {
+    case 1 -> base;
+    case 2 -> base + "/subscribe";
+    default -> "/app/" + user + "/subscribe";
+    };
     // Minimal Meross GET frame
         String json = "{" +
                 "\"header\":{" +
@@ -475,22 +475,18 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
                 "\"sign\":\"" + sign + "\"}," +
                 "\"payload\":{\"state\":{}}}";
         // Topic: app-level publish (Meross cloud usually expects /appliance/<uuid>/subscribe for sending commands, but we only have app topics; try device publish path for command).
-    String topic = "/appliance/" + uuid + "/publish"; // use publish path for device command
+    String topic = "/appliance/" + uuid + "/subscribe"; // revert to subscribe path for device command
         c.publish(topic, json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
         pendingGarageGets.put(messageId, uuid);
-        logger.debug("Sent GarageDoor GET for uuid={} msgId={} topic={} fromPath={} retry={} (pending mapped)", uuid,
-                messageId, topic, fromPath, retry);
-        // Schedule single retry (switch variant) after 5s if still no state
-        if (!garageStateSeen.contains(uuid) && !retry) {
+        logger.debug("Sent GarageDoor GET attempt={} for uuid={} msgId={} topic={} fromPath={} (pending mapped)",
+                attempt, uuid, messageId, topic, fromPath);
+        if (!garageStateSeen.contains(uuid) && attempt < 3) {
             scheduler.schedule(() -> {
                 if (!garageStateSeen.contains(uuid)) {
-                    garageGetRetried.add(uuid);
-                    logger.debug(
-                            "Retrying GarageDoor GET with alternate fromPath (no state yet) uuid={} firstFromPath={}",
-                            uuid, firstGetFromPath.get(uuid));
+                    logger.debug("Re-attempting GarageDoor GET (attempt {}->{} uuid={})", attempt, attempt + 1, uuid);
                     sendGarageDoorGet(uuid);
                 }
-            }, 5, java.util.concurrent.TimeUnit.SECONDS);
+            }, 4, java.util.concurrent.TimeUnit.SECONDS);
         }
     }
 
