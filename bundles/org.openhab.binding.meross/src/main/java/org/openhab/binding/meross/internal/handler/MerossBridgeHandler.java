@@ -63,6 +63,11 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
     // Map Meross device UUID -> ThingUID for garage doors (populated after device file load)
     private final java.util.concurrent.ConcurrentMap<String, org.openhab.core.thing.ThingUID> garageUuidMap =
             new java.util.concurrent.ConcurrentHashMap<>();
+    // Track which garage door UUIDs have delivered at least one valid state
+    private final java.util.Set<String> garageStateSeen = java.util.Collections
+        .newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>());
+    // Throttle repeated GET retries triggered by heartbeat (uuid->epochMillis)
+    private final java.util.concurrent.ConcurrentMap<String, Long> lastGarageGetAttempt = new java.util.concurrent.ConcurrentHashMap<>();
 
     public MerossBridgeHandler(Thing thing) {
         super((Bridge) thing);
@@ -142,19 +147,29 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
             }
             String namespace = header.has("namespace") ? header.get("namespace").getAsString() : "";
             String method = header.has("method") ? header.get("method").getAsString() : "";
-            if (!"PUSH".equalsIgnoreCase(method)) {
-                return; // ignore non-push for now
-            }
+            boolean isPush = "PUSH".equalsIgnoreCase(method);
+            boolean isAck = "ACK".equalsIgnoreCase(method) || "GETACK".equalsIgnoreCase(method);
             String from = header.has("from") ? header.get("from").getAsString() : "";
             // Expected patterns: /appliance/<uuid>/subscribe or /app/<user>
             @Nullable String uuid = extractUuid(from);
             JsonObject payloadObj = obj.getAsJsonObject("payload");
+            // Heartbeat-based re-query: if we receive a system heartbeat and have not yet seen a state, re-issue GET (throttled)
+            if (isPush && uuid != null && !garageStateSeen.contains(uuid)
+                    && ("Appliance.System.All".equals(namespace) || "Appliance.System.Online".equals(namespace)
+                            || namespace.toLowerCase().contains("heartbeat"))) {
+                maybeRequestGarageState(uuid);
+            }
             if (namespace.startsWith("Appliance.Control.Sensor.LatestX")) {
                 handleSensorLatest(namespace, payloadObj);
             } else if (namespace.startsWith("Appliance.GarageDoor")) {
-                handleGarageDoor(namespace, uuid, payloadObj);
+                if (isPush || isAck) {
+                    handleGarageDoor(namespace, uuid, payloadObj);
+                }
             } else {
-                logger.debug("Unhandled Meross namespace={} (len={}B)", namespace, payload.length);
+                if (isPush) { // limit noise: only log unhandled PUSH namespaces
+                    logger.debug("Unhandled Meross namespace={} (len={}B) method={}", namespace, payload.length,
+                            method);
+                }
             }
         } catch (Exception e) {
             logger.debug("Failed to parse Meross MQTT payload: {}", e.getMessage());
@@ -209,6 +224,11 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
             logger.debug("GarageDoor interpreted state={} (openVal={}) uuid={}", status, openVal, uuid);
             if (uuid != null) {
                 updateGarageDoorChannel(uuid, status);
+                if (!"UNKNOWN".equals(status)) {
+                    garageStateSeen.add(uuid);
+                }
+            } else {
+                logger.trace("GarageDoor state parsed but uuid missing (method likely ACK from /app path)");
             }
         } catch (Exception e) {
             logger.debug("Error handling GarageDoor namespace {}: {}", namespace, e.getMessage());
@@ -429,6 +449,16 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
         String topic = "/appliance/" + uuid + "/subscribe"; // using subscribe path for command per Meross patterns
         c.publish(topic, json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
         logger.debug("Sent GarageDoor GET for uuid={} msgId={} topic={}", uuid, messageId, topic);
+    }
+
+    private void maybeRequestGarageState(String uuid) {
+        long now = System.currentTimeMillis();
+        Long last = lastGarageGetAttempt.get(uuid);
+        if (last != null && (now - last) < 5000) { // 5s throttle
+            return;
+        }
+        lastGarageGetAttempt.put(uuid, now);
+        sendGarageDoorGet(uuid);
     }
 
     private static String md5(String s) {
