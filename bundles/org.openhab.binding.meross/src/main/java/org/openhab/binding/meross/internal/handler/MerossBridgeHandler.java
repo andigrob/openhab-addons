@@ -60,6 +60,9 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
     public static final File CREDENTIALFILE = new File(
             OpenHAB.getUserDataFolder() + File.separator + CREDENTIAL_FILE_NAME);
     public static final File DEVICE_FILE = new File(OpenHAB.getUserDataFolder() + File.separator + DEVICE_FILE_NAME);
+    // Map Meross device UUID -> ThingUID for garage doors (populated after device file load)
+    private final java.util.concurrent.ConcurrentMap<String, org.openhab.core.thing.ThingUID> garageUuidMap =
+            new java.util.concurrent.ConcurrentHashMap<>();
 
     public MerossBridgeHandler(Thing thing) {
         super((Bridge) thing);
@@ -142,11 +145,14 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
             if (!"PUSH".equalsIgnoreCase(method)) {
                 return; // ignore non-push for now
             }
+            String from = header.has("from") ? header.get("from").getAsString() : "";
+            // Expected patterns: /appliance/<uuid>/subscribe or /app/<user>
+            String uuid = extractUuid(from);
             JsonObject payloadObj = obj.getAsJsonObject("payload");
             if (namespace.startsWith("Appliance.Control.Sensor.LatestX")) {
                 handleSensorLatest(namespace, payloadObj);
             } else if (namespace.startsWith("Appliance.GarageDoor")) {
-                handleGarageDoor(namespace, payloadObj);
+                handleGarageDoor(namespace, uuid, payloadObj);
             } else {
                 logger.debug("Unhandled Meross namespace={} (len={}B)", namespace, payload.length);
             }
@@ -163,7 +169,7 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
         logger.trace("SensorLatest namespace={} keys={}", namespace, payload.keySet());
     }
 
-    private void handleGarageDoor(String namespace, @Nullable JsonObject payload) {
+    private void handleGarageDoor(String namespace, @Nullable String uuid, @Nullable JsonObject payload) {
         if (payload == null) {
             return;
         }
@@ -200,9 +206,83 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
             default -> "UNKNOWN";
             };
             // TODO: locate thing/channel and update state (Contact) -> OPEN/CLOSED
-            logger.debug("GarageDoor interpreted state={} (openVal={})", status, openVal);
+            logger.debug("GarageDoor interpreted state={} (openVal={}) uuid={}", status, openVal, uuid);
+            if (uuid != null) {
+                updateGarageDoorChannel(uuid, status);
+            }
         } catch (Exception e) {
             logger.debug("Error handling GarageDoor namespace {}: {}", namespace, e.getMessage());
+        }
+    }
+
+    private void updateGarageDoorChannel(String uuid, String status) {
+        var thingUID = garageUuidMap.get(uuid);
+        if (thingUID == null) {
+            logger.trace("No mapped ThingUID for garage uuid={} yet", uuid);
+            return;
+        }
+        var thing = getThing();
+        if (thingUID.equals(thing.getUID())) {
+            // Bridge itself, ignore
+            return;
+        }
+        var registry = getThing().getUID().getAsString(); // placeholder to avoid null; actual channel update below
+        // Find the actual thing from ThingRegistry via callback context (not directly accessible here) – fallback: iterate through bridge children
+        for (Thing child : getThing().getThings()) {
+            if (child.getUID().equals(thingUID)) {
+                org.openhab.core.library.types.OpenClosedType state = switch (status) {
+                case "OPEN" -> org.openhab.core.library.types.OpenClosedType.OPEN;
+                case "CLOSED" -> org.openhab.core.library.types.OpenClosedType.CLOSED;
+                default -> null;
+                };
+                if (state != null) {
+                    child.getHandler().updateState(new ChannelUID(child.getUID(), org.openhab.binding.meross.internal.MerossBindingConstants.CHANNEL_GARAGEDOOR_STATE), state);
+                }
+                return;
+            }
+        }
+    }
+
+    private String extractUuid(String from) {
+        if (from == null || from.isBlank()) {
+            return null;
+        }
+        // /appliance/<uuid>/subscribe
+        int first = from.indexOf("/appliance/");
+        if (first >= 0) {
+            int start = first + "/appliance/".length();
+            int nextSlash = from.indexOf('/', start);
+            if (nextSlash > start) {
+                return from.substring(start, nextSlash);
+            }
+        }
+        return null;
+    }
+
+    private void buildGarageUuidMap(MerossHttpConnector httpConnector) {
+        try {
+            var devices = httpConnector.readDevices();
+            if (devices == null) {
+                return;
+            }
+            java.util.Map<String, org.openhab.core.thing.ThingUID> map = new java.util.HashMap<>();
+            for (Thing child : getThing().getThings()) {
+                if (child.getHandler() instanceof MerossGarageDoorHandler doorHandler) {
+                    // match by doorName vs device devName
+                    String doorName = doorHandler.getThing().getConfiguration().get("doorName") != null
+                            ? doorHandler.getThing().getConfiguration().get("doorName").toString()
+                            : doorHandler.getThing().getLabel();
+                    if (doorName == null) {
+                        continue;
+                    }
+                    devices.stream().filter(d -> doorName.equalsIgnoreCase(d.devName())).findFirst()
+                            .ifPresent(d -> map.put(d.uuid(), child.getUID()));
+                }
+            }
+            garageUuidMap.putAll(map);
+            logger.debug("Built garage uuid map size={}", map.size());
+        } catch (Exception e) {
+            logger.debug("Failed building garage uuid map: {}", e.getMessage());
         }
     }
 
@@ -285,6 +365,8 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
                         logger.info("Subscribed to {} Meross MQTT app topics", topics.size());
                         // Schedule initial GarageDoor state query shortly after subscribe (if credentials cached)
                         scheduler.schedule(() -> sendInitialGarageDoorGets(httpConnector), 3, java.util.concurrent.TimeUnit.SECONDS);
+                        // Build UUID mapping for garage door things
+                        scheduler.execute(() -> buildGarageUuidMap(httpConnector));
                     } else {
                         logger.debug("No Meross MQTT app topics assembled (userId/appId missing)");
                     }
