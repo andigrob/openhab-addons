@@ -362,6 +362,14 @@ public class MerossHttpConnector {
             // Graceful degradation: reuse existing credential file if present
             if (credentialFile.exists()) {
                 logger.warn("Meross login hit TOO_MANY_TOKENS; reusing existing credentials file {} and continuing", credentialFile.getName());
+                // Attempt to load token from existing credentials file so that subsequent calls are authorized
+                CloudCredentials existing = readCredentials();
+                if (existing != null && existing.token() != null && !existing.token().isBlank()) {
+                    setToken(existing.token());
+                    logger.debug("Reused existing Meross token (len={}) after TOO_MANY_TOKENS", existing.token().length());
+                } else {
+                    logger.warn("Existing credentials file present but token missing/blank; device fetch likely to fail");
+                }
             } else {
                 throw new MerossApiException(apiMessage != null ? apiMessage : "TOO_MANY_TOKENS");
             }
@@ -380,10 +388,12 @@ public class MerossHttpConnector {
         // In fallback path (token reuse), attempt device fetch if device file missing OR placeholder
         if (credentialFile.exists()) {
             boolean needFetch = !MerossBridgeHandler.DEVICE_FILE.exists();
+            boolean placeholder = false;
             if (!needFetch) {
                 try {
                     String existing = readFile(MerossBridgeHandler.DEVICE_FILE);
-                    if (isPlaceholderDeviceJson(existing.trim())) {
+                    placeholder = isPlaceholderDeviceJson(existing.trim());
+                    if (placeholder) {
                         logger.warn("Existing Meross device file is placeholder; forcing refetch despite token reuse");
                         needFetch = true;
                     }
@@ -392,10 +402,33 @@ public class MerossHttpConnector {
                 }
             }
             if (needFetch) {
-                CompletableFuture.runAsync(() -> fetchDevicesAndWrite(MerossBridgeHandler.DEVICE_FILE)).exceptionally(e -> {
-                    logger.debug("Cannot fetch devices after token reuse {}", e.getMessage());
-                    return null;
-                }).join();
+                // Limited retry loop (e.g. 2 attempts) in case first fetch returns placeholder again
+                int attempts = 0;
+                final int maxAttempts = 2;
+                while (attempts < maxAttempts) {
+                    attempts++;
+                    CompletableFuture.runAsync(() -> fetchDevicesAndWrite(MerossBridgeHandler.DEVICE_FILE)).exceptionally(e -> {
+                        logger.debug("Cannot fetch devices after token reuse {}", e.getMessage());
+                        return null;
+                    }).join();
+                    try {
+                        if (MerossBridgeHandler.DEVICE_FILE.exists()) {
+                            String content = readFile(MerossBridgeHandler.DEVICE_FILE).trim();
+                            if (!isPlaceholderDeviceJson(content)) {
+                                logger.debug("Device fetch attempt {} produced non-placeholder content ({} bytes)", attempts, content.length());
+                                break;
+                            } else {
+                                logger.debug("Device fetch attempt {} still placeholder; {}", attempts, attempts < maxAttempts ? "retrying" : "giving up");
+                                // Sleep small backoff before retrying
+                                if (attempts < maxAttempts) {
+                                    try { Thread.sleep(500L); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+                                }
+                            }
+                        }
+                    } catch (IOException e) {
+                        logger.debug("Error reading device file after attempt {}: {}", attempts, e.getMessage());
+                    }
+                }
             } else {
                 logger.debug("Skipping device fetch on token reuse; existing device file considered valid: {}", MerossBridgeHandler.DEVICE_FILE.getAbsolutePath());
             }
