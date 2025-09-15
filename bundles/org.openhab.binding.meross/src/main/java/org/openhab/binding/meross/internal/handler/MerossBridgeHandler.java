@@ -475,7 +475,7 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
                 "\"sign\":\"" + sign + "\"}," +
                 "\"payload\":{\"state\":{}}}";
         // Topic: app-level publish (Meross cloud usually expects /appliance/<uuid>/subscribe for sending commands, but we only have app topics; try device publish path for command).
-        String topic = "/appliance/" + uuid + "/subscribe"; // using subscribe path for command per Meross patterns
+    String topic = "/appliance/" + uuid + "/publish"; // use publish path for device command
         c.publish(topic, json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
         pendingGarageGets.put(messageId, uuid);
         logger.debug("Sent GarageDoor GET for uuid={} msgId={} topic={} fromPath={} retry={} (pending mapped)", uuid,
