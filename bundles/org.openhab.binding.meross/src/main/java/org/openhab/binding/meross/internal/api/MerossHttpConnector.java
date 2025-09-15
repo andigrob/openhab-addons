@@ -243,12 +243,17 @@ public class MerossHttpConnector {
             logger.debug("IOException while fetching devices {}", e.getMessage());
         }
         if (json != null) {
-            // Defensive: Meross occasionally returns an empty object '{}' instead of an array. Do NOT overwrite
-            // a previously good device list with an empty object placeholder.
             String trimmed = json.trim();
-            boolean looksLikeEmptyObject = "{}".equals(trimmed) || (trimmed.startsWith("{") && trimmed.endsWith("}") && !trimmed.contains("deviceType"));
-            if (looksLikeEmptyObject && deviceFile.exists() && deviceFile.length() > 4) {
-                logger.warn("Skipping device file overwrite with unexpected object '{}' (keeping existing device list)");
+            // Detect placeholder / invalid content (object instead of expected array of devices)
+            boolean placeholder = isPlaceholderDeviceJson(trimmed);
+            if (placeholder) {
+                // Never write a pure placeholder. If file already contains data we keep it; if it does not exist yet
+                // we simply skip creation so discovery can retry later.
+                if (deviceFile.exists() && deviceFile.length() > 4) {
+                    logger.warn("Skipping device file overwrite with placeholder object '{}' (keeping existing list)");
+                } else {
+                    logger.debug("Not creating device file because response is placeholder '{}' (will rely on retry logic)");
+                }
                 return;
             }
             writeFile(json, deviceFile);
@@ -292,8 +297,8 @@ public class MerossHttpConnector {
                             raw.substring(0, Math.min(raw.length(), 300)));
                 }
                 String trimmed = raw.trim();
-                if ("{}".equals(trimmed)) {
-                    logger.debug("Device file contains '{}' placeholder; treating as no devices (will retry on next fetch)");
+                if (isPlaceholderDeviceJson(trimmed)) {
+                    logger.debug("Device file contains placeholder object; treating as no devices (will retry on next fetch)");
                     return new ArrayList<>();
                 }
                 devices = new Gson().fromJson(raw, type);
@@ -372,14 +377,52 @@ public class MerossHttpConnector {
                     }).join();
             return; // done
         }
-        // In fallback path (token reuse), attempt device fetch ONLY if device file missing (avoid accidental '{}')
-        if (credentialFile.exists() && !MerossBridgeHandler.DEVICE_FILE.exists()) {
-            CompletableFuture.runAsync(() -> fetchDevicesAndWrite(MerossBridgeHandler.DEVICE_FILE)).exceptionally(e -> {
-                logger.debug("Cannot fetch devices after token reuse {}", e.getMessage());
-                return null;
-            }).join();
-        } else if (credentialFile.exists()) {
-            logger.debug("Skipping device fetch on token reuse because device file already present: {}", MerossBridgeHandler.DEVICE_FILE.getAbsolutePath());
+        // In fallback path (token reuse), attempt device fetch if device file missing OR placeholder
+        if (credentialFile.exists()) {
+            boolean needFetch = !MerossBridgeHandler.DEVICE_FILE.exists();
+            if (!needFetch) {
+                try {
+                    String existing = readFile(MerossBridgeHandler.DEVICE_FILE);
+                    if (isPlaceholderDeviceJson(existing.trim())) {
+                        logger.warn("Existing Meross device file is placeholder; forcing refetch despite token reuse");
+                        needFetch = true;
+                    }
+                } catch (IOException e) {
+                    logger.debug("Could not read existing device file to check placeholder: {}", e.getMessage());
+                }
+            }
+            if (needFetch) {
+                CompletableFuture.runAsync(() -> fetchDevicesAndWrite(MerossBridgeHandler.DEVICE_FILE)).exceptionally(e -> {
+                    logger.debug("Cannot fetch devices after token reuse {}", e.getMessage());
+                    return null;
+                }).join();
+            } else {
+                logger.debug("Skipping device fetch on token reuse; existing device file considered valid: {}", MerossBridgeHandler.DEVICE_FILE.getAbsolutePath());
+            }
         }
+    }
+
+    /**
+     * Determines if the returned device JSON is a placeholder (empty object or object without any device-like markers)
+     * instead of the expected array. This avoids persisting useless placeholders that block discovery retries.
+     */
+    private boolean isPlaceholderDeviceJson(String trimmed) {
+        if (trimmed.isEmpty()) {
+            return true;
+        }
+        if ("{}".equals(trimmed)) {
+            return true;
+        }
+        if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+            return false; // proper array
+        }
+        // Heuristic: object but missing common device indicators
+        if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+            String lower = trimmed.toLowerCase();
+            if (!lower.contains("devname") && !lower.contains("uuid") && !lower.contains("devicetype") && !lower.contains("deviceid")) {
+                return true;
+            }
+        }
+        return false;
     }
 }
