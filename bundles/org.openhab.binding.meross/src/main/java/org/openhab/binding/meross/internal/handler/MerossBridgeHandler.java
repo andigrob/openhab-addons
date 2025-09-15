@@ -73,7 +73,9 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
     private final java.util.concurrent.ConcurrentMap<String, String> pendingGarageGets = new java.util.concurrent.ConcurrentHashMap<>();
     // Track if a single retry was already scheduled for uuid
     private final java.util.Set<String> garageGetRetried = java.util.Collections
-            .newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>());
+        .newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>());
+    // Track which variant was used first (uuid -> fromPath) for diagnostics
+    private final java.util.concurrent.ConcurrentMap<String, String> firstGetFromPath = new java.util.concurrent.ConcurrentHashMap<>();
 
     public MerossBridgeHandler(Thing thing) {
         super((Bridge) thing);
@@ -453,7 +455,14 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
         String messageId = randomHex(32);
         String sign = md5(messageId + key + ts);
     // Prefer /app/<user>-<appId> path if appId known
-    String fromPath = "/app/" + user + (cachedAppId != null ? ("-" + cachedAppId) : "");
+        // Variant A (preferred): /app/<user>-<appId>
+        // Retry Variant B: /app/<user>/subscribe (some MQTT stacks expect subscribe suffix for ACK correlation)
+        boolean retry = garageGetRetried.contains(uuid);
+        String baseA = "/app/" + user + (cachedAppId != null ? ("-" + cachedAppId) : "");
+        String fromPath = retry ? ("/app/" + user + "/subscribe") : baseA;
+        if (!retry) {
+            firstGetFromPath.putIfAbsent(uuid, fromPath);
+        }
     // Minimal Meross GET frame
         String json = "{" +
                 "\"header\":{" +
@@ -469,13 +478,16 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
         String topic = "/appliance/" + uuid + "/subscribe"; // using subscribe path for command per Meross patterns
         c.publish(topic, json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
         pendingGarageGets.put(messageId, uuid);
-        logger.debug("Sent GarageDoor GET for uuid={} msgId={} topic={} fromPath={} (pending mapped)", uuid, messageId, topic, fromPath);
-        // Schedule single retry after 5s if still no state
-        if (!garageStateSeen.contains(uuid) && !garageGetRetried.contains(uuid)) {
-            garageGetRetried.add(uuid);
+        logger.debug("Sent GarageDoor GET for uuid={} msgId={} topic={} fromPath={} retry={} (pending mapped)", uuid,
+                messageId, topic, fromPath, retry);
+        // Schedule single retry (switch variant) after 5s if still no state
+        if (!garageStateSeen.contains(uuid) && !retry) {
             scheduler.schedule(() -> {
                 if (!garageStateSeen.contains(uuid)) {
-                    logger.trace("Retrying initial GarageDoor GET (no state yet) uuid={}", uuid);
+                    garageGetRetried.add(uuid);
+                    logger.debug(
+                            "Retrying GarageDoor GET with alternate fromPath (no state yet) uuid={} firstFromPath={}",
+                            uuid, firstGetFromPath.get(uuid));
                     sendGarageDoorGet(uuid);
                 }
             }, 5, java.util.concurrent.TimeUnit.SECONDS);
