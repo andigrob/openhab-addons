@@ -243,6 +243,14 @@ public class MerossHttpConnector {
             logger.debug("IOException while fetching devices {}", e.getMessage());
         }
         if (json != null) {
+            // Defensive: Meross occasionally returns an empty object '{}' instead of an array. Do NOT overwrite
+            // a previously good device list with an empty object placeholder.
+            String trimmed = json.trim();
+            boolean looksLikeEmptyObject = "{}".equals(trimmed) || (trimmed.startsWith("{") && trimmed.endsWith("}") && !trimmed.contains("deviceType"));
+            if (looksLikeEmptyObject && deviceFile.exists() && deviceFile.length() > 4) {
+                logger.warn("Skipping device file overwrite with unexpected object '{}' (keeping existing device list)");
+                return;
+            }
             writeFile(json, deviceFile);
             logger.debug("Fetched devices JSON written ({} bytes) to {}", json.length(), deviceFile.getAbsolutePath());
             if (logger.isTraceEnabled()) {
@@ -282,6 +290,11 @@ public class MerossHttpConnector {
                 if (logger.isTraceEnabled()) {
                     logger.trace("Raw device file content ({} bytes): {}", raw.length(),
                             raw.substring(0, Math.min(raw.length(), 300)));
+                }
+                String trimmed = raw.trim();
+                if ("{}".equals(trimmed)) {
+                    logger.debug("Device file contains '{}' placeholder; treating as no devices (will retry on next fetch)");
+                    return new ArrayList<>();
                 }
                 devices = new Gson().fromJson(raw, type);
                 if (devices == null || devices.isEmpty()) {
@@ -359,13 +372,14 @@ public class MerossHttpConnector {
                     }).join();
             return; // done
         }
-        // In fallback path (token reuse), still attempt devices fetch if we have creds
-        if (credentialFile.exists()) {
-            CompletableFuture.runAsync(() -> fetchDevicesAndWrite(MerossBridgeHandler.DEVICE_FILE))
-                    .exceptionally(e -> {
-                        logger.debug("Cannot fetch devices after token reuse {}", e.getMessage());
-                        return null;
-                    }).join();
+        // In fallback path (token reuse), attempt device fetch ONLY if device file missing (avoid accidental '{}')
+        if (credentialFile.exists() && !MerossBridgeHandler.DEVICE_FILE.exists()) {
+            CompletableFuture.runAsync(() -> fetchDevicesAndWrite(MerossBridgeHandler.DEVICE_FILE)).exceptionally(e -> {
+                logger.debug("Cannot fetch devices after token reuse {}", e.getMessage());
+                return null;
+            }).join();
+        } else if (credentialFile.exists()) {
+            logger.debug("Skipping device fetch on token reuse because device file already present: {}", MerossBridgeHandler.DEVICE_FILE.getAbsolutePath());
         }
     }
 }
