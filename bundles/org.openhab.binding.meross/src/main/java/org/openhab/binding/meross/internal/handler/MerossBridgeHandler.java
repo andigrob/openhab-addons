@@ -72,7 +72,7 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
     // Map pending GET messageId -> uuid to resolve ACK without /appliance path
     private final java.util.concurrent.ConcurrentMap<String, String> pendingGarageGets = new java.util.concurrent.ConcurrentHashMap<>();
     // Track if a single retry was already scheduled for uuid
-    // Track attempt index (1..3) for initial state acquisition
+    // Track attempt index (1..2) for initial state acquisition
     private final java.util.concurrent.ConcurrentMap<String, Integer> garageInitAttempts = new java.util.concurrent.ConcurrentHashMap<>();
 
     public MerossBridgeHandler(Thing thing) {
@@ -454,15 +454,10 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
         String sign = md5(messageId + key + ts);
     // Prefer /app/<user>-<appId> path if appId known
     int attempt = garageInitAttempts.merge(uuid, 1, Integer::sum);
-    // Ordered variants: 1) /app/<user>-<appId>
-    //                    2) /app/<user>-<appId>/subscribe
-    //                    3) /app/<user>/subscribe
+    // New order: 1) /app/<user>-<appId>/subscribe (empirisch funktional)
+    //            2) /app/<user>-<appId>
     String base = "/app/" + user + (cachedAppId != null ? ("-" + cachedAppId) : "");
-    String fromPath = switch (attempt) {
-    case 1 -> base;
-    case 2 -> base + "/subscribe";
-    default -> "/app/" + user + "/subscribe";
-    };
+    String fromPath = attempt == 1 ? base + "/subscribe" : base;
     // Minimal Meross GET frame
         String json = "{" +
                 "\"header\":{" +
@@ -478,12 +473,12 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
     String topic = "/appliance/" + uuid + "/subscribe"; // revert to subscribe path for device command
         c.publish(topic, json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
         pendingGarageGets.put(messageId, uuid);
-        logger.debug("Sent GarageDoor GET attempt={} for uuid={} msgId={} topic={} fromPath={} (pending mapped)",
-                attempt, uuid, messageId, topic, fromPath);
-        if (!garageStateSeen.contains(uuid) && attempt < 3) {
+        logger.debug("Sent GarageDoor GET attempt={} for uuid={} msgId={} topic={} fromPath={} (pending mapped)", attempt,
+                uuid, messageId, topic, fromPath);
+        if (!garageStateSeen.contains(uuid) && attempt == 1) {
             scheduler.schedule(() -> {
                 if (!garageStateSeen.contains(uuid)) {
-                    logger.debug("Re-attempting GarageDoor GET (attempt {}->{} uuid={})", attempt, attempt + 1, uuid);
+                    logger.debug("Retrying GarageDoor GET with fallback fromPath (attempt 2) uuid={}", uuid);
                     sendGarageDoorGet(uuid);
                 }
             }, 4, java.util.concurrent.TimeUnit.SECONDS);
