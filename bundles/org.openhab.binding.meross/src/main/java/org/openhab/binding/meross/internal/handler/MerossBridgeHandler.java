@@ -71,8 +71,9 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
     private final java.util.concurrent.ConcurrentMap<String, Long> lastGarageGetAttempt = new java.util.concurrent.ConcurrentHashMap<>();
     // Map pending GET messageId -> uuid to resolve ACK without /appliance path
     private final java.util.concurrent.ConcurrentMap<String, String> pendingGarageGets = new java.util.concurrent.ConcurrentHashMap<>();
-    // Track resend attempts for initial state acquisition per uuid
-    private final java.util.concurrent.ConcurrentMap<String, Integer> garageGetAttempts = new java.util.concurrent.ConcurrentHashMap<>();
+    // Track if a single retry was already scheduled for uuid
+    private final java.util.Set<String> garageGetRetried = java.util.Collections
+            .newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>());
 
     public MerossBridgeHandler(Thing thing) {
         super((Bridge) thing);
@@ -452,20 +453,7 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
         String messageId = randomHex(32);
         String sign = md5(messageId + key + ts);
     // Prefer /app/<user>-<appId> path if appId known
-        int attempt = garageGetAttempts.merge(uuid, 1, Integer::sum);
-        // attempt 1: /app/<user>-<appId>
-        // attempt 2: /app/<user>-<appId>/subscribe
-        // attempt 3: /app/<user>/subscribe
-        // further attempts reuse attempt 3
-        String base = "/app/" + user + (cachedAppId != null ? ("-" + cachedAppId) : "");
-        String fromPath;
-        if (attempt == 1) {
-            fromPath = base;
-        } else if (attempt == 2) {
-            fromPath = base + "/subscribe";
-        } else {
-            fromPath = "/app/" + user + "/subscribe";
-        }
+    String fromPath = "/app/" + user + (cachedAppId != null ? ("-" + cachedAppId) : "");
     // Minimal Meross GET frame
         String json = "{" +
                 "\"header\":{" +
@@ -481,14 +469,16 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
         String topic = "/appliance/" + uuid + "/subscribe"; // using subscribe path for command per Meross patterns
         c.publish(topic, json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
         pendingGarageGets.put(messageId, uuid);
-        logger.debug("Sent GarageDoor GET attempt={} for uuid={} msgId={} topic={} fromPath={} (pending mapped)", attempt, uuid, messageId, topic, fromPath);
-        // Schedule alternate variant if still no state after 4s and attempts < 3
-        if (!garageStateSeen.contains(uuid) && attempt < 3) {
+        logger.debug("Sent GarageDoor GET for uuid={} msgId={} topic={} fromPath={} (pending mapped)", uuid, messageId, topic, fromPath);
+        // Schedule single retry after 5s if still no state
+        if (!garageStateSeen.contains(uuid) && !garageGetRetried.contains(uuid)) {
+            garageGetRetried.add(uuid);
             scheduler.schedule(() -> {
                 if (!garageStateSeen.contains(uuid)) {
+                    logger.trace("Retrying initial GarageDoor GET (no state yet) uuid={}", uuid);
                     sendGarageDoorGet(uuid);
                 }
-            }, 4, java.util.concurrent.TimeUnit.SECONDS);
+            }, 5, java.util.concurrent.TimeUnit.SECONDS);
         }
     }
 
