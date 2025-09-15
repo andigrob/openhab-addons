@@ -142,9 +142,9 @@ public class MerossGarageDoorHandler extends BaseThingHandler {
                 logger.debug("Refresh signal strength (not available in HTTP-only mode)");
             }
         }
-    /**
-     * Bridge callback to update physical door state.
-     */
+    }
+
+    // Bridge callback to update physical door state.
     public void updateDoorState(OpenClosedType state) {
         updateState(new ChannelUID(getThing().getUID(), CHANNEL_GARAGEDOOR_STATE), state);
     }

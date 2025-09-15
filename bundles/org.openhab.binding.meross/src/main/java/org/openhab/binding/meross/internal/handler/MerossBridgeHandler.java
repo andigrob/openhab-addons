@@ -227,11 +227,7 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
             return;
         }
         // Iterate through bridge children and update state via callback
-        var callback = getCallback();
-        if (callback == null) {
-            logger.debug("Cannot update garage door channel (callback null) uuid={}", uuid);
-            return;
-        }
+    var callback = getCallback(); // optional fallback, may be null
         for (Thing child : getThing().getThings()) {
             if (child.getUID().equals(thingUID)) {
                 org.openhab.core.library.types.OpenClosedType state = switch (status) {
@@ -243,10 +239,11 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
                     var handler = child.getHandler();
                     if (handler instanceof MerossGarageDoorHandler doorHandler) {
                         doorHandler.updateDoorState(state);
-                    } else {
+                    } else if (callback != null) {
                         ChannelUID cu = new ChannelUID(child.getUID(),
                                 org.openhab.binding.meross.internal.MerossBindingConstants.CHANNEL_GARAGEDOOR_STATE);
-                        callback.stateUpdated(child, cu, state);
+                        // Fallback path if a non-specific handler were present (unlikely scenario)
+                        callback.stateUpdated(cu, state);
                     }
                     logger.debug("Updated garage door channel state={} uuid={} thing={}", status, uuid,
                             thingUID.getAsString());
