@@ -147,7 +147,7 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
             }
             String from = header.has("from") ? header.get("from").getAsString() : "";
             // Expected patterns: /appliance/<uuid>/subscribe or /app/<user>
-            String uuid = extractUuid(from);
+            @Nullable String uuid = extractUuid(from);
             JsonObject payloadObj = obj.getAsJsonObject("payload");
             if (namespace.startsWith("Appliance.Control.Sensor.LatestX")) {
                 handleSensorLatest(namespace, payloadObj);
@@ -226,8 +226,12 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
             // Bridge itself, ignore
             return;
         }
-        var registry = getThing().getUID().getAsString(); // placeholder to avoid null; actual channel update below
-        // Find the actual thing from ThingRegistry via callback context (not directly accessible here) – fallback: iterate through bridge children
+        // Iterate through bridge children and update state via callback
+        var callback = getCallback();
+        if (callback == null) {
+            logger.debug("Cannot update garage door channel (callback null) uuid={}", uuid);
+            return;
+        }
         for (Thing child : getThing().getThings()) {
             if (child.getUID().equals(thingUID)) {
                 org.openhab.core.library.types.OpenClosedType state = switch (status) {
@@ -236,14 +240,23 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
                 default -> null;
                 };
                 if (state != null) {
-                    child.getHandler().updateState(new ChannelUID(child.getUID(), org.openhab.binding.meross.internal.MerossBindingConstants.CHANNEL_GARAGEDOOR_STATE), state);
+                    var handler = child.getHandler();
+                    if (handler instanceof MerossGarageDoorHandler doorHandler) {
+                        doorHandler.updateDoorState(state);
+                    } else {
+                        ChannelUID cu = new ChannelUID(child.getUID(),
+                                org.openhab.binding.meross.internal.MerossBindingConstants.CHANNEL_GARAGEDOOR_STATE);
+                        callback.stateUpdated(child, cu, state);
+                    }
+                    logger.debug("Updated garage door channel state={} uuid={} thing={}", status, uuid,
+                            thingUID.getAsString());
                 }
                 return;
             }
         }
     }
 
-    private String extractUuid(String from) {
+    private @Nullable String extractUuid(@Nullable String from) {
         if (from == null || from.isBlank()) {
             return null;
         }
