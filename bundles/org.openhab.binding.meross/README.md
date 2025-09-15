@@ -1,6 +1,6 @@
 # Meross Binding
 
-This binding integrates **Meross**&reg; devices
+This binding integrates **Meross**&reg; devices.
 
 ## Supported Things
 
@@ -8,13 +8,13 @@ Supported thing types
 
 - `gateway` : Acts as a Bridge to your Meross cloud account.
 - `light` : Represents a light device like a Smart ambient light.
-- `garagedoorgeneric` : Meross MSG100 / Garage Door Opener (EXPERIMENTAL, HTTP-only – commands are placeholders, no state polling yet)
+- `garagedoorgeneric` : Meross MSG100 / Garage Door Opener (experimental – realtime state via Meross cloud MQTT; open/close commands not yet implemented)
 
 |   Meross Name        | Type    | Description               | Supported | Tested|
 |----------------------|---------|---------------------------|-----------|--------|
 | Smart ambient light  | msl430  | Smart ambient light       | yes       | yes    |
 | Smart plug           | mss210  | Smart plug                | yes       | yes    |
-| Garage Door Opener   | msg100  | Garage door opener (MSG100, experimental HTTP-only, limited)| partial  | no     |
+| Garage Door Opener   | msg100  | Garage door opener (MSG100, experimental: realtime state, no commands yet)| partial  | yes    |
 
 ## Discovery
 
@@ -52,19 +52,23 @@ NOTICE: Due to  **Meross**&reg; security policy please minimize host connections
 
 ## Channels
 
-Channels:
+| Channel | Thing Types          | Type    | RW   | Description |
+|---------|----------------------|---------|------|-------------|
+| power   | light / plug types   | Switch  | R/W  | Turn device on/off |
+| door    | garagedoorgeneric    | Contact | R    | Garage door state (OPEN/CLOSED) via cloud MQTT (initial GET + PUSH) |
+| control | garagedoorgeneric    | String  | W    | Reserved for OPEN/CLOSE (not implemented yet) |
 
-| Channel | Type   | Read/Write | Description                                                          |
-|---------|--------|------------|----------------------------------------------------------------------|
-| power   | Switch | N/A        | Power bulb/plug capability to control bulbs and plugs on/off         |
-| door    | Contact| Read       | (Planned) Garage door state (OPEN/CLOSED) – not implemented yet       |
-| control | String | Write      | (Placeholder) Intended OPEN/CLOSE commands (no effect in HTTP-only mode) |
+## Security & Rate Limits
 
-NOTICE: Due to **Meross**&reg; security policy please limit communication to no more than 150 messages every one hour at the earliest convenience otherwise, the user is emailed by Meross of the limit exceed and if such a behaviour does not change the user's account will be **BANNED**!
+TLS: All Meross cloud MQTT connections are forced to TLS (ssl://). If a `tcp://` host is configured it will be transparently upgraded and a warning logged. An internal config flag `allowInsecureTls` exists but defaults to `false` and currently only governs warning verbosity (no plaintext fallback implemented).
 
-The inappropriate usage is user's responsibility
+Rate Limits: Meross enforces message and token limits. Keep command frequency modest (empirically <150 msgs/hour) to avoid account throttling or temporary suspension.
 
-NOTICE: Due to the above mentioned security policy  currently is not possible to get the device on/off status  
+Credentials & Files: Retrieved cloud credentials and device lists are stored under the openHAB userdata path (e.g. `/var/lib/openhab/meross/`). Protect file system permissions accordingly.
+
+Garage Door State: The MSG100 state is initialized shortly after subscription using a signed GET over MQTT and then kept current by PUSH events. If state remains NULL, enable DEBUG/TRACE logging for the binding to inspect GET/ACK traffic.
+
+Disclaimer: Excessive or abusive cloud usage remains the user's responsibility.
 
 ## Full Example
 
@@ -72,9 +76,8 @@ NOTICE: Due to the above mentioned security policy  currently is not possible to
 
 ```java
 Bridge meross:gateway:mybridge "Meross bridge" [ hostName="https://iotx-eu.meross.com", userEmail="abcde" userPassword="fghij" ] {
-    light SC_plug                  "Desk"         [lightName="Desk"]
-    // Garage door support is experimental (no real open/close yet)
-    garagedoorgeneric GD_main      "Main Garage"  [doorName="Main Garage"]
+    light SC_plug                  "Desk"         [ lightName="Desk" ]
+    garagedoorgeneric GD_main      "Main Garage"  [ doorName="Main Garage" ]
 }
 ```
 
@@ -82,8 +85,8 @@ Bridge meross:gateway:mybridge "Meross bridge" [ hostName="https://iotx-eu.meros
 
 ```java
 Switch              iSC_plug                 "Desk"                                    { channel="meross:light:mybridge:SC_plug:power" }
-String              iGD_main_control         "Garage Control (placeholder)"             { channel="meross:garagedoorgeneric:mybridge:GD_main:control" }
-Contact             iGD_main_state           "Garage State (planned)"                   { channel="meross:garagedoorgeneric:mybridge:GD_main:door" }
+String              iGD_main_control         "Garage Control (future)"                  { channel="meross:garagedoorgeneric:mybridge:GD_main:control" }
+Contact             iGD_main_state           "Garage State"                              { channel="meross:garagedoorgeneric:mybridge:GD_main:door" }
 ```
 
 ### meross.sitemap Example
