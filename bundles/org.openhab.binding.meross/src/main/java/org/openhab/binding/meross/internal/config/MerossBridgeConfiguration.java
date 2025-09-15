@@ -26,4 +26,9 @@ public class MerossBridgeConfiguration {
     public String userPassword = "";
     public boolean enableMqtt = true;
     public String mqttHost = ""; // optional override
+    /**
+     * Optional development flag. If set true, the binding may (in future) permit non-TLS connections.
+     * Currently only used to emit a stronger warning when an insecure scheme is requested.
+     */
+    public boolean allowInsecureTls = false;
 }

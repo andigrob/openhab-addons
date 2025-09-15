@@ -386,6 +386,9 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
                         ? creds.mqttDomain() : config.hostName) : config.mqttHost;
                 String sanitized = sanitizeHost(candidate);
                 mqttConnector = new MerossMqttConnector(sanitized);
+                if (sanitized.startsWith("tcp://") && !config.allowInsecureTls) {
+                    logger.warn("Meross MQTT requested insecure scheme tcp:// but allowInsecureTls=false; connection will be upgraded to TLS");
+                }
                 mqttConnector.authenticate(creds.userId(), creds.key(), creds.token());
                 cachedUserId = creds.userId();
                 cachedKey = creds.key();

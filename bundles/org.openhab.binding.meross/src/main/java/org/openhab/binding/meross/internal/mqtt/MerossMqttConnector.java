@@ -253,9 +253,16 @@ public class MerossMqttConnector implements MqttCallback {
     }
 
     private String inferBrokerURI() {
-        if (brokerHost.startsWith("tcp://") || brokerHost.startsWith("ssl://")) {
+        // Enforce TLS: transparently upgrade insecure tcp:// to ssl:// while warning the user.
+        if (brokerHost.startsWith("tcp://")) {
+            String hostPort = brokerHost.substring("tcp://".length());
+            logger.warn("Insecure Meross MQTT scheme 'tcp://' detected; forcing TLS 'ssl://' for {}", hostPort);
+            return hostPort.contains(":") ? ("ssl://" + hostPort) : ("ssl://" + hostPort + ":443");
+        }
+        if (brokerHost.startsWith("ssl://")) {
             return brokerHost;
         }
+        // Plain hostname: append default TLS scheme/port
         return "ssl://" + brokerHost + ":443";
     }
 
