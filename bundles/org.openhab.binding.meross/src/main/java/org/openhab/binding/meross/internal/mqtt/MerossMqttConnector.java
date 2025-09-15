@@ -37,6 +37,16 @@ public class MerossMqttConnector implements MqttCallback {
         this.brokerHost = brokerHost;
     }
 
+    /**
+     * Alternate constructor to supply a stable clientId (e.g. persisted across restarts).
+     */
+    public MerossMqttConnector(String brokerHost, String fixedClientId) {
+        this.brokerHost = brokerHost;
+        if (fixedClientId != null && !fixedClientId.isBlank()) {
+            this.clientId = fixedClientId;
+        }
+    }
+
     public void addListener(MerossMqttListener listener) {
         listeners.add(listener);
     }
@@ -62,7 +72,7 @@ public class MerossMqttConnector implements MqttCallback {
         }
         try {
             String uri = inferBrokerURI();
-            client = new MqttClient(uri, clientId);
+            client = new MqttClient(uri, clientId, new org.eclipse.paho.client.mqttv3.persist.MemoryPersistence());
             client.setCallback(this);
             MqttConnectOptions opts = new MqttConnectOptions();
             opts.setAutomaticReconnect(true);
@@ -116,7 +126,7 @@ public class MerossMqttConnector implements MqttCallback {
             try {
                 String uri = inferBrokerURI();
                 clientId = altClientId;
-                client = new MqttClient(uri, clientId);
+                client = new MqttClient(uri, clientId, new org.eclipse.paho.client.mqttv3.persist.MemoryPersistence());
                 client.setCallback(this);
                 MqttConnectOptions opts = new MqttConnectOptions();
                 opts.setAutomaticReconnect(true);

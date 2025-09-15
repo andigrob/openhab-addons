@@ -58,9 +58,11 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
     private @Nullable String cachedAppId;
     private static final String CREDENTIAL_FILE_NAME = "meross" + File.separator + "meross_credentials.json";
     private static final String DEVICE_FILE_NAME = "meross" + File.separator + "meross_devices.json";
+    private static final String CLIENT_ID_FILE_NAME = "meross" + File.separator + "meross_mqtt_client_id.txt";
     public static final File CREDENTIALFILE = new File(
             OpenHAB.getUserDataFolder() + File.separator + CREDENTIAL_FILE_NAME);
     public static final File DEVICE_FILE = new File(OpenHAB.getUserDataFolder() + File.separator + DEVICE_FILE_NAME);
+    private static final File CLIENT_ID_FILE = new File(OpenHAB.getUserDataFolder() + File.separator + CLIENT_ID_FILE_NAME);
     // Map Meross device UUID -> ThingUID for garage doors (populated after device file load)
     private final java.util.concurrent.ConcurrentMap<String, org.openhab.core.thing.ThingUID> garageUuidMap =
             new java.util.concurrent.ConcurrentHashMap<>();
@@ -385,10 +387,11 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
                     logger.debug("Credentials not available after wait window; skipping MQTT startup");
                     return;
                 }
-                String candidate = config.mqttHost.isBlank() ? (creds.mqttDomain() != null && !creds.mqttDomain().isBlank()
-                        ? creds.mqttDomain() : config.hostName) : config.mqttHost;
+        String candidate = config.mqttHost.isBlank() ? (creds.mqttDomain() != null && !creds.mqttDomain().isBlank()
+            ? creds.mqttDomain() : config.hostName) : config.mqttHost;
                 String sanitized = sanitizeHost(candidate);
-                mqttConnector = new MerossMqttConnector(sanitized);
+        String stableClientId = loadOrCreateClientId();
+        mqttConnector = new MerossMqttConnector(sanitized, stableClientId);
                 if (sanitized.startsWith("tcp://") && !config.allowInsecureTls) {
                     logger.warn("Meross MQTT requested insecure scheme tcp:// but allowInsecureTls=false; connection will be upgraded to TLS");
                 }
@@ -429,6 +432,36 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
                 logger.debug("MQTT startup failed: {}", e.getMessage());
             }
         });
+    }
+
+    private String loadOrCreateClientId() {
+        try {
+            if (CLIENT_ID_FILE.exists()) {
+                String existing = java.nio.file.Files.readString(CLIENT_ID_FILE.toPath()).trim();
+                if (!existing.isBlank()) {
+                    logger.debug("Using persisted Meross MQTT clientId={} (file) ", existing);
+                    return existing;
+                }
+            } else {
+                // Ensure directory exists
+                File parent = CLIENT_ID_FILE.getParentFile();
+                if (parent != null && !parent.exists()) {
+                    // ignore result
+                    parent.mkdirs();
+                }
+            }
+        } catch (Exception e) {
+            logger.debug("Failed reading existing Meross MQTT clientId file: {}", e.getMessage());
+        }
+        // Generate new stable id (once) and persist
+        String newId = "openhab_" + randomHex(16); // 8 bytes hex -> 16 chars appended
+        try {
+            java.nio.file.Files.writeString(CLIENT_ID_FILE.toPath(), newId, java.nio.charset.StandardCharsets.UTF_8);
+            logger.debug("Persisted new Meross MQTT clientId={} to {}", newId, CLIENT_ID_FILE.getName());
+        } catch (Exception e) {
+            logger.debug("Failed persisting Meross MQTT clientId (continuing with in-memory id) : {}", e.getMessage());
+        }
+        return newId;
     }
 
     private void sendInitialGarageDoorGets(MerossHttpConnector http) {
