@@ -322,20 +322,48 @@ public class MerossHttpConnector {
     }
 
     public void fetchDataAsync() throws ConnectException, MerossApiException {
-        int httpStatusCode = login().statusCode();
-        int apiStatusCode = apiStatus();
-        String apiMessage = MerossEnum.ApiStatusCode.getMessageByApiStatusCode(apiStatusCode);
+        HttpResponse<String> loginResp;
+        try {
+            loginResp = login();
+        } catch (ConnectException ce) {
+            throw ce; // propagate network failure
+        }
+        int httpStatusCode = loginResp.statusCode();
         if (httpStatusCode != 200) {
             throw new ConnectException();
-        } else if (apiStatusCode != MerossEnum.ApiStatusCode.OK.value()) {
-            if (apiMessage != null) {
-                throw new MerossApiException(apiMessage);
+        }
+        int apiStatusCode = -1;
+        try {
+            var root = JsonParser.parseString(loginResp.body()).getAsJsonObject();
+            apiStatusCode = root.get("apiStatus").getAsInt();
+        } catch (Exception e) {
+            logger.debug("Failed parsing apiStatus from login body: {}", e.getMessage());
+        }
+        String apiMessage = MerossEnum.ApiStatusCode.getMessageByApiStatusCode(apiStatusCode);
+        if (apiStatusCode == MerossEnum.ApiStatusCode.TOO_MANY_TOKENS.value()) {
+            // Graceful degradation: reuse existing credential file if present
+            if (credentialFile.exists()) {
+                logger.warn("Meross login hit TOO_MANY_TOKENS; reusing existing credentials file {} and continuing", credentialFile.getName());
+            } else {
+                throw new MerossApiException(apiMessage != null ? apiMessage : "TOO_MANY_TOKENS");
             }
+        } else if (apiStatusCode != MerossEnum.ApiStatusCode.OK.value()) {
+            throw new MerossApiException(apiMessage != null ? apiMessage : "API_ERROR" );
         } else {
+            // Only fetch & overwrite credentials if login succeeded normally (avoid extra token churn)
             CompletableFuture.runAsync(() -> fetchCredentialsAndWrite(MerossBridgeHandler.CREDENTIALFILE))
                     .thenRunAsync(() -> fetchDevicesAndWrite(MerossBridgeHandler.DEVICE_FILE))
                     .thenRunAsync(this::logout).exceptionally(e -> {
                         logger.debug("Cannot fetch data {}", e.getMessage());
+                        return null;
+                    }).join();
+            return; // done
+        }
+        // In fallback path (token reuse), still attempt devices fetch if we have creds
+        if (credentialFile.exists()) {
+            CompletableFuture.runAsync(() -> fetchDevicesAndWrite(MerossBridgeHandler.DEVICE_FILE))
+                    .exceptionally(e -> {
+                        logger.debug("Cannot fetch devices after token reuse {}", e.getMessage());
                         return null;
                     }).join();
         }

@@ -98,13 +98,14 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
             updateStatus(ThingStatus.OFFLINE, ThingStatusDetail.COMMUNICATION_ERROR);
             return;
         }
-        try {
+    try {
             // Always fetch data first (credentials + devices). Ensures credentials file exists for MQTT domain.
             merossHttpConnectorLocal.fetchDataAsync();
             // Build garage UUID map early (HTTP devices already fetched asynchronously; will be empty if not yet loaded and rebuilt later)
             scheduler.execute(() -> buildGarageUuidMap(merossHttpConnectorLocal));
 
             if (config.enableMqtt) {
+        logger.debug("Meross bridge initialize(): enableMqtt=true hostName={} mqttHostOverride='{}'", config.hostName, config.mqttHost);
                 startMqttAsync(merossHttpConnectorLocal);
             } else {
                 logger.debug("Meross MQTT disabled via configuration.");
@@ -375,6 +376,7 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
     private void startMqttAsync(MerossHttpConnector httpConnector) {
         scheduler.execute(() -> {
             try {
+                logger.debug("startMqttAsync: entered (thread={})", Thread.currentThread().getName());
                 var creds = httpConnector.readCredentials();
                 int attempts = 0;
                 while (creds == null && attempts < 5) { // wait up to ~5 * 2s = 10s
@@ -403,6 +405,7 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
                         candidate, sanitized, creds.mqttDomain(), !config.mqttHost.isBlank());
                 MerossMqttConnector connectorRef = mqttConnector;
                 connectorRef.connect();
+                logger.debug("After connect(): isConnected={} clientId={} appIdCandidate={}", connectorRef.isConnected(), stableClientId, connectorRef.getAppId());
                 if (connectorRef.isConnected()) {
                     connectorRef.addListener(this);
                     var userId = connectorRef.getUserId();
@@ -425,8 +428,10 @@ public class MerossBridgeHandler extends BaseBridgeHandler implements MerossMqtt
                         // Build UUID mapping for garage door things
                         scheduler.execute(() -> buildGarageUuidMap(httpConnector));
                     } else {
-                        logger.debug("No Meross MQTT app topics assembled (userId/appId missing)");
+                        logger.debug("No Meross MQTT app topics assembled (userId/appId missing) userId={} appId={}", userId, appId);
                     }
+                } else {
+                    logger.debug("Meross MQTT connect() did not set connected flag (check earlier logs / fallback)");
                 }
             } catch (Exception e) {
                 logger.debug("MQTT startup failed: {}", e.getMessage());
